@@ -19,7 +19,7 @@ services:
     networks:
       - edge-finder-network
     restart: unless-stopped
-    command: ["python", "-m", "scripts.download_all_fx_data"]
+    command: ["python", "scripts/run_preprocessing.py"]
     healthcheck:
       test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
       interval: 30s
@@ -46,7 +46,7 @@ services:
     networks:
       - edge-finder-network
     restart: unless-stopped
-    command: ["python", "-m", "training.train_hybrid_model"]
+    command: ["python", "scripts/run_training.py"]
     depends_on:
       - data-service
     deploy:
@@ -81,7 +81,7 @@ services:
     networks:
       - edge-finder-network
     restart: unless-stopped
-    command: ["python", "-m", "evaluation.validate_models"]
+    command: ["python", "scripts/run_evaluation.py"]
     depends_on:
       - training-service
     deploy:
@@ -109,7 +109,7 @@ services:
     networks:
       - edge-finder-network
     restart: unless-stopped
-    command: ["python", "-m", "inference.live_prediction_service"]
+    command: ["python", "scripts/run_inference.py"]
     depends_on:
       - validation-service
     ports:

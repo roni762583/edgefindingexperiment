@@ -1,0 +1,166 @@
+# Market Edge Finder Experiment - Default Configuration
+# This file contains the default configuration for all components
+
+# OANDA API Configuration
+oanda:
+  api_key: ""  # Set via environment variable OANDA_API_KEY
+  account_id: ""  # Set via environment variable OANDA_ACCOUNT_ID
+  environment: "practice"  # practice or live
+
+# Model Architecture Configuration
+model:
+  # TCNAE parameters
+  tcnae_input_channels: 4
+  tcnae_sequence_length: 4
+  tcnae_latent_dim: 100
+  tcnae_hidden_channels: [32, 64, 128]
+  tcnae_kernel_size: 3
+  tcnae_dropout: 0.2
+  
+  # LightGBM parameters
+  gbdt_n_estimators: 1000
+  gbdt_max_depth: 8
+  gbdt_learning_rate: 0.05
+  gbdt_subsample: 0.8
+  gbdt_colsample_bytree: 0.8
+  gbdt_reg_alpha: 0.1
+  gbdt_reg_lambda: 0.1
+  
+  # Context manager parameters
+  context_dim: 100
+  context_ema_alpha: 0.1
+  context_correlation_window: 100
+  
+  # General parameters
+  num_instruments: 20
+  device: "auto"  # auto, cpu, cuda, mps
+
+# Data Processing Configuration
+data:
+  # FX Instruments (20 major pairs)
+  instruments:
+    - "EUR_USD"
+    - "GBP_USD"
+    - "USD_JPY"
+    - "USD_CHF"
+    - "AUD_USD"
+    - "USD_CAD"
+    - "NZD_USD"
+    - "EUR_GBP"
+    - "EUR_JPY"
+    - "GBP_JPY"
+    - "AUD_JPY"
+    - "EUR_CHF"
+    - "GBP_CHF"
+    - "CHF_JPY"
+    - "EUR_AUD"
+    - "GBP_AUD"
+    - "AUD_CHF"
+    - "NZD_JPY"
+    - "CAD_JPY"
+    - "AUD_NZD"
+  
+  # Data parameters
+  granularity: "H1"  # Hourly data
+  lookback_days: 365  # Days of historical data
+  
+  # Feature engineering
+  atr_period: 14
+  adx_period: 14
+  volatility_window: 24
+  direction_window: 6
+  swing_lookback: 12
+  
+  # Normalization
+  normalization_method: "rolling_zscore"
+  normalization_window: 168  # 1 week in hours
+  outlier_method: "iqr"
+  outlier_threshold: 2.0
+  regime_window: 720  # 30 days in hours
+  
+  # Processing
+  max_workers: 4
+  batch_size: 32
+
+# Training Configuration
+training:
+  # Training parameters
+  num_epochs: 100
+  batch_size: 32
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  
+  # Training stages
+  stage1_epochs: 50  # TCNAE pretraining
+  stage2_epochs: 30  # Hybrid training
+  stage3_epochs: 15  # Cooperative learning
+  stage4_epochs: 5   # Adaptive teacher forcing
+  
+  # Validation
+  validation_split: 0.2
+  early_stopping_patience: 10
+  early_stopping_min_delta: 0.001
+  
+  # Optimization
+  optimizer: "adam"  # adam, adamw, sgd
+  scheduler: "reduce_on_plateau"  # reduce_on_plateau, cosine, step
+  mixed_precision: true
+  gradient_clip_norm: 1.0
+  
+  # Checkpointing
+  save_every_n_epochs: 10
+  keep_n_checkpoints: 5
+  
+  # Walk-forward validation
+  train_window_months: 12
+  test_window_months: 1
+  step_size_months: 1
+
+# Inference Configuration
+inference:
+  # Model paths
+  model_base_path: "./models"
+  tcnae_model_name: "tcnae_best.pth"
+  gbdt_model_name: "gbdt_best.pkl"
+  context_manager_name: "context_manager.pkl"
+  normalizer_name: "normalizer.pkl"
+  
+  # Prediction parameters
+  confidence_threshold: 0.1
+  max_prediction_age_minutes: 60
+  update_interval_seconds: 300  # 5 minutes
+  
+  # Safety limits
+  max_position_size: 1.0
+  max_total_exposure: 10.0
+  
+  # Real-time data
+  data_buffer_hours: 48
+  data_update_interval: 60  # seconds
+  
+  # Performance
+  batch_inference: true
+  use_context: true
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: null  # Set to file path to enable file logging
+  max_file_size: 10485760  # 10MB
+  backup_count: 5
+  
+  # Component-specific logging
+  model_logging: true
+  data_logging: true
+  training_logging: true
+  inference_logging: true
+
+# System Configuration
+environment: "development"  # development, staging, production
+
+# Paths
+data_path: "./data"
+models_path: "./models"
+logs_path: "./logs"
+results_path: "./results"

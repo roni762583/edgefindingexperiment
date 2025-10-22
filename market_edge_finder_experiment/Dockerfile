@@ -67,7 +67,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import sys; sys.exit(0)" || exit 1
 
 # Default command
-CMD ["python", "-m", "scripts.download_all_fx_data", "--help"]
+CMD ["python", "scripts/run_preprocessing.py", "--help"]
 
 # Development stage
 FROM production as development
