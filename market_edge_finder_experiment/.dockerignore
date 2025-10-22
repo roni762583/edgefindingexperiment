@@ -1,0 +1,109 @@
+# Git
+.git
+.gitignore
+.gitattributes
+README.md
+DEVELOPMENT_PLAN.md
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.hypothesis
+
+# IDEs
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Project development files
+tests/
+docs/
+notebooks/
+experiments/
+
+# Large data files (exclude from Docker build)
+data/raw/*.csv
+data/raw/*.parquet
+data/processed/*.csv
+data/processed/*.parquet
+data/processed/*.duckdb
+
+# Model artifacts (use volume mounts)
+models/checkpoints/
+models/saved_models/
+*.pt
+*.pth
+*.pkl
+*.joblib
+
+# Logs (use volume mounts)
+logs/
+*.log
+
+# Temporary and backup files
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+
+# Environment files
+.env
+.env.*
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Documentation build
+docs/_build/
+
+# Node modules (if any)
+node_modules/
+
+# Jupyter
+.ipynb_checkpoints
+
+# Large compressed files
+*.gz
+*.zip
+*.tar.gz
+*.rar
+
+# Development tools
+.pytest_cache/
+.mypy_cache/
+.black
+.isort.cfg

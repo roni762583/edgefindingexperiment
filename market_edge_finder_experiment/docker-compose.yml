@@ -1,0 +1,202 @@
+version: '3.8'
+
+services:
+  # Data download and preprocessing service
+  data-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: edge-finder-data
+    environment:
+      - PYTHONPATH=/app
+      - OANDA_ENVIRONMENT=${OANDA_ENVIRONMENT:-live}
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - edge-finder-network
+    restart: unless-stopped
+    command: ["python", "-m", "scripts.download_all_fx_data"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Training service for TCNAE and LightGBM
+  training-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: edge-finder-training
+    environment:
+      - PYTHONPATH=/app
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-}
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+    networks:
+      - edge-finder-network
+    restart: unless-stopped
+    command: ["python", "-m", "training.train_hybrid_model"]
+    depends_on:
+      - data-service
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "python", "-c", "import torch; print('PyTorch available')"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+
+  # Validation and evaluation service
+  validation-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: edge-finder-validation
+    environment:
+      - PYTHONPATH=/app
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data:ro
+      - ./models:/app/models:ro
+      - ./evaluation:/app/evaluation
+      - ./logs:/app/logs
+    networks:
+      - edge-finder-network
+    restart: unless-stopped
+    command: ["python", "-m", "evaluation.validate_models"]
+    depends_on:
+      - training-service
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+  # Live inference service
+  inference-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: edge-finder-inference
+    environment:
+      - PYTHONPATH=/app
+      - OANDA_ENVIRONMENT=${OANDA_ENVIRONMENT:-live}
+    env_file:
+      - .env
+    volumes:
+      - ./models:/app/models:ro
+      - ./logs:/app/logs
+    networks:
+      - edge-finder-network
+    restart: unless-stopped
+    command: ["python", "-m", "inference.live_prediction_service"]
+    depends_on:
+      - validation-service
+    ports:
+      - "8080:8080"  # Prediction API endpoint
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Development service (optional)
+  dev-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: edge-finder-dev
+    environment:
+      - PYTHONPATH=/app
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+    networks:
+      - edge-finder-network
+    ports:
+      - "8888:8888"  # Jupyter notebook
+      - "6006:6006"  # TensorBoard
+    command: ["bash"]
+    stdin_open: true
+    tty: true
+    profiles:
+      - dev
+
+  # Monitoring and logging (optional)
+  monitoring-service:
+    image: grafana/grafana:latest
+    container_name: edge-finder-monitoring
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./monitoring/grafana:/etc/grafana/provisioning
+    networks:
+      - edge-finder-network
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Database for model metadata and results
+  database:
+    image: postgres:15
+    container_name: edge-finder-db
+    environment:
+      - POSTGRES_DB=${DB_NAME:-edge_finder}
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+    networks:
+      - edge-finder-network
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    profiles:
+      - database
+
+networks:
+  edge-finder-network:
+    driver: bridge
+    name: edge-finder-network
+
+volumes:
+  grafana-storage:
+    driver: local
+  postgres-data:
+    driver: local
