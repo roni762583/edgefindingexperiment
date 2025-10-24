@@ -618,7 +618,10 @@ class FXFeatureGenerator:
     
     def calculate_volatility(self, high: np.ndarray, low: np.ndarray, close: np.ndarray) -> np.ndarray:
         """
-        Calculate normalized volatility using ATR
+        Calculate normalized volatility using ATR z-score with normalized arctan transformation
+        
+        Formula: (arctan(zscore(ATR)) + π/2) / π
+        Where zscore = (ATR - SMA20(ATR)) / STDEV500(ATR)
         
         Args:
             high: High prices
@@ -626,18 +629,47 @@ class FXFeatureGenerator:
             close: Close prices
             
         Returns:
-            Normalized volatility array
+            Normalized volatility array bounded to [0, 1] exactly
         """
+        # Calculate ATR
         atr = TechnicalIndicators.calculate_atr(high, low, close, self.config.volatility_window)
         
-        # Normalize by price to get percentage volatility
-        volatility = np.where(close > 0, atr / close, np.nan)
+        # Calculate z-score normalization
+        # SMA20 of ATR
+        sma_window = 20
+        atr_sma = np.full(len(atr), np.nan)
+        for i in range(sma_window - 1, len(atr)):
+            if not np.any(np.isnan(atr[i-sma_window+1:i+1])):
+                atr_sma[i] = np.mean(atr[i-sma_window+1:i+1])
+        
+        # STDEV500 of ATR (use available data if less than 500)
+        stdev_window = min(500, len(atr))
+        atr_stdev = np.full(len(atr), np.nan)
+        for i in range(stdev_window - 1, len(atr)):
+            start_idx = max(0, i - stdev_window + 1)
+            atr_slice = atr[start_idx:i+1]
+            if not np.any(np.isnan(atr_slice)) and len(atr_slice) > 1:
+                atr_stdev[i] = np.std(atr_slice, ddof=1)
+        
+        # Calculate z-score
+        zscore = np.full(len(atr), np.nan)
+        valid_mask = ~(np.isnan(atr) | np.isnan(atr_sma) | np.isnan(atr_stdev)) & (atr_stdev > 0)
+        zscore[valid_mask] = (atr[valid_mask] - atr_sma[valid_mask]) / atr_stdev[valid_mask]
+        
+        # Apply normalized arctan transformation to map to [0, 1] range
+        # arctan(zscore) ranges from -π/2 to +π/2
+        # Normalize: (arctan(zscore) + π/2) / π maps to [0, 1]
+        volatility = np.full(len(zscore), np.nan)
+        valid_zscore = ~np.isnan(zscore)
+        volatility[valid_zscore] = (np.arctan(zscore[valid_zscore]) + np.pi/2) / np.pi
         
         return volatility
     
     def calculate_direction(self, high: np.ndarray, low: np.ndarray, close: np.ndarray) -> np.ndarray:
         """
-        Calculate directional movement intensity using ADX
+        Calculate directional movement intensity using scaled ADX
+        
+        Formula: tanh(ADX/25) for smooth [0.6, 1.0] range
         
         Args:
             high: High prices
@@ -645,12 +677,16 @@ class FXFeatureGenerator:
             close: Close prices
             
         Returns:
-            Direction intensity array
+            Direction intensity array bounded to approximately [0.6, 1.0]
         """
+        # Calculate ADX with configured window
         adx = TechnicalIndicators.calculate_adx(high, low, close, self.config.direction_window)
         
-        # Normalize ADX to 0-1 range
-        direction = adx / 100.0
+        # Apply tanh scaling for smooth bounded output
+        # tanh(ADX/25) maps typical ADX range [15-60] to [0.6-1.0]
+        direction = np.full(len(adx), np.nan)
+        valid_mask = ~np.isnan(adx)
+        direction[valid_mask] = np.tanh(adx[valid_mask] / 25.0)
         
         return direction
     
@@ -1069,18 +1105,36 @@ class FXFeatureGenerator:
         # Calculate angle slopes between last two HSPs and LSPs
         hsp_angles, lsp_angles = self._calculate_angle_slopes_between_last_two_hsp_lsp(normalized_asi, sig_hsp, sig_lsp)
         
+        # Calculate direction indicator (ADX-based)
+        logger.debug(f"Calculating direction indicator for {instrument}")
+        try:
+            direction = self.calculate_direction(high_prices, low_prices, close_prices)
+        except Exception as e:
+            logger.warning(f"Failed to calculate direction for {instrument}: {e}")
+            direction = np.full(len(df), np.nan)
+        
+        # Calculate volatility indicator (ATR z-score with arctan)
+        logger.debug(f"Calculating volatility indicator for {instrument}")
+        try:
+            volatility = self.calculate_volatility(high_prices, low_prices, close_prices)
+        except Exception as e:
+            logger.warning(f"Failed to calculate volatility for {instrument}: {e}")
+            volatility = np.full(len(df), np.nan)
+        
         # # COMMENTED OUT: Original ASI swing point detection (kept for reference)
         # local_hsp_orig, local_lsp_orig, sig_hsp_orig, sig_lsp_orig = self._detect_swing_points_with_alternating_constraint(asi)
         # angle_slopes_original = self._calculate_angle_slopes_from_swing_points(asi, sig_hsp_orig, sig_lsp_orig)
 
-        # Add normalized ASI columns (PRIMARY METHOD) - no instrument prefix
-        result_df['asi'] = normalized_asi  # Main ASI column (normalized)
+        # Add all 4 indicator columns (complete feature set)
+        result_df['asi'] = normalized_asi  # 1. ASI: Wilder's accumulative swing index (USD normalized)
         result_df['local_hsp'] = local_hsp
         result_df['local_lsp'] = local_lsp
         result_df['sig_hsp'] = sig_hsp
         result_df['sig_lsp'] = sig_lsp
-        result_df['hsp_angles'] = hsp_angles  # Regression angle between last two HSPs
-        result_df['lsp_angles'] = lsp_angles  # Regression angle between last two LSPs
+        result_df['hsp_angles'] = hsp_angles  # 2. HSP angles: Regression slopes (linear mapped)
+        result_df['lsp_angles'] = lsp_angles  # 2. LSP angles: Regression slopes (linear mapped)
+        result_df['direction'] = direction    # 3. Direction: ADX-based trend strength
+        result_df['volatility'] = volatility  # 4. Volatility: ATR z-score with arctan
         
         # Forward-fill angle values once they exist (don't fill initial NaN values)
         result_df['hsp_angles'] = result_df['hsp_angles'].ffill()

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Chart All Indicators - Comprehensive Visualization
+Chart All Indicators - Comprehensive 4-Indicator System Visualization
 
-Shows all generated indicator columns from the new Grok ASI implementation
+Shows complete technical analysis system: ASI, HSP/LSP angles, direction, volatility
 including USD-normalized ASI, swing points, and angle calculations.
 
 Usage: python3 scripts/chart_all_indicators.py
@@ -57,9 +57,9 @@ def create_comprehensive_indicator_chart():
     else:
         x_data = range(len(plot_data))
     
-    # Create comprehensive chart
-    fig, axes = plt.subplots(7, 1, figsize=(15, 28))
-    fig.suptitle('Comprehensive Indicator Chart - New Grok ASI Implementation', fontsize=16, fontweight='bold')
+    # Create comprehensive chart with 4-indicator system
+    fig, axes = plt.subplots(9, 1, figsize=(18, 32))
+    fig.suptitle('Complete 4-Indicator Technical Analysis System', fontsize=16, fontweight='bold')
     
     # 1. Price Chart with OHLC
     ax1 = axes[0]
@@ -168,36 +168,109 @@ def create_comprehensive_indicator_chart():
     ax6.legend()
     ax6.grid(True, alpha=0.3)
     
-    # 7. Implementation Comparison Summary
+    # 7. Direction Indicator (ADX-based)
     ax7 = axes[6]
-    ax7.text(0.05, 0.9, 'Grok ASI Implementation Features:', fontsize=14, fontweight='bold', 
-             transform=ax7.transAxes)
+    if 'direction' in plot_data.columns:
+        valid_direction = plot_data['direction'].dropna()
+        if len(valid_direction) > 0:
+            ax7.plot(x_data, plot_data['direction'], 'darkgreen', linewidth=2, label='Direction (ADX-based)')
+            ax7.fill_between(x_data, 0, plot_data['direction'], alpha=0.3, color='green')
+            
+            # Add reference lines
+            ax7.axhline(0.5, color='orange', linestyle='--', alpha=0.7, label='0.5 threshold')
+            ax7.axhline(0.8, color='red', linestyle=':', alpha=0.7, label='0.8 strong trend')
+            
+            # Add statistics
+            dir_mean = valid_direction.mean()
+            dir_std = valid_direction.std()
+            dir_min, dir_max = valid_direction.min(), valid_direction.max()
+            ax7.text(0.02, 0.95, f'Range: [{dir_min:.3f}, {dir_max:.3f}]\\nMean: {dir_mean:.3f}\\nStd: {dir_std:.3f}', 
+                     transform=ax7.transAxes, verticalalignment='top', fontsize=9,
+                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+        else:
+            ax7.text(0.5, 0.5, 'No direction values calculated', transform=ax7.transAxes, 
+                    ha='center', va='center', fontsize=12)
+    else:
+        ax7.text(0.5, 0.5, 'Direction column not found', transform=ax7.transAxes, 
+                ha='center', va='center', fontsize=12)
     
-    implementation_text = """
-✅ USD Normalization: OHLC converted to USD per 100k lot using pip values
-✅ Dynamic Limit Move: L = 3 × ATR (Average True Range in USD)
-✅ Wilder's SI Formula: 50 × (N/R) × (K/L) with no capping
-✅ Grok R Formula: Complex conditional calculation per specification
-✅ Cross-Instrument Compatibility: USD values enable comparison
-✅ Swing Point Detection: 3-bar alternating constraint algorithm
-✅ Regression Angles: arctan(slope) between last 2 swing points
+    ax7.set_title('7. Direction Indicator - tanh(ADX/25) Scaling', fontweight='bold')
+    ax7.set_ylabel('Direction Strength (0-1)')
+    ax7.set_ylim(-0.1, 1.1)
+    ax7.legend()
+    ax7.grid(True, alpha=0.3)
+    
+    # 8. Volatility Indicator (ATR z-score)
+    ax8 = axes[7]
+    if 'volatility' in plot_data.columns:
+        valid_volatility = plot_data['volatility'].dropna()
+        if len(valid_volatility) > 0:
+            ax8.plot(x_data, plot_data['volatility'], 'darkorange', linewidth=2, label='Volatility (ATR z-score)')
+            ax8.fill_between(x_data, 0, plot_data['volatility'], alpha=0.3, color='orange')
+            
+            # Add reference lines
+            ax8.axhline(0.5, color='blue', linestyle='--', alpha=0.7, label='0.5 median')
+            ax8.axhline(0.2, color='red', linestyle=':', alpha=0.7, label='0.2 high vol')
+            ax8.axhline(0.8, color='green', linestyle=':', alpha=0.7, label='0.8 low vol')
+            
+            # Add statistics
+            vol_mean = valid_volatility.mean()
+            vol_std = valid_volatility.std()
+            vol_min, vol_max = valid_volatility.min(), valid_volatility.max()
+            ax8.text(0.02, 0.95, f'Range: [{vol_min:.3f}, {vol_max:.3f}]\\nMean: {vol_mean:.3f}\\nStd: {vol_std:.3f}', 
+                     transform=ax8.transAxes, verticalalignment='top', fontsize=9,
+                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+        else:
+            ax8.text(0.5, 0.5, 'No volatility values calculated', transform=ax8.transAxes, 
+                    ha='center', va='center', fontsize=12)
+    else:
+        ax8.text(0.5, 0.5, 'Volatility column not found', transform=ax8.transAxes, 
+                ha='center', va='center', fontsize=12)
+    
+    ax8.set_title('8. Volatility Indicator - 1 - arctan(ATR_zscore)', fontweight='bold')
+    ax8.set_ylabel('Volatility Level (0-1)')
+    ax8.set_ylim(-0.1, 1.1)
+    ax8.legend()
+    ax8.grid(True, alpha=0.3)
+    
+    # 9. Implementation Summary
+    ax9 = axes[8]
+    ax9.text(0.05, 0.9, '4-Indicator System Features:', fontsize=14, fontweight='bold', 
+             transform=ax9.transAxes)
+    
+    # Get direction and volatility stats
+    dir_stats = f"N/A"
+    vol_stats = f"N/A"
+    if 'direction' in plot_data.columns and not plot_data['direction'].dropna().empty:
+        valid_dir = plot_data['direction'].dropna()
+        dir_stats = f"[{valid_dir.min():.3f}, {valid_dir.max():.3f}], Valid={len(valid_dir)}"
+    if 'volatility' in plot_data.columns and not plot_data['volatility'].dropna().empty:
+        valid_vol = plot_data['volatility'].dropna()
+        vol_stats = f"[{valid_vol.min():.3f}, {valid_vol.max():.3f}], Valid={len(valid_vol)}"
+    
+    implementation_text = f"""
+✅ 1. ASI (Accumulative Swing Index): USD normalized, Wilder's formula (50x multiplier)
+✅ 2a. HSP Angles: Linear regression slopes between high swing points (-1,+1)
+✅ 2b. LSP Angles: Linear regression slopes between low swing points (-1,+1)
+✅ 3. Direction: ADX-based directional strength, tanh(ADX/25) scaling (0-1)
+✅ 4. Volatility: ATR z-score transformation, 1-arctan(zscore) (0-1)
 
-Key Statistics:
-• Total bars processed: 700 (EUR_USD H1 data)
-• HSP detected: {} | LSP detected: {}
-• ASI range: [{:.0f}, {:.0f}] USD per 100k lot
-• Valid angle calculations: HSP={}, LSP={}
-""".format(
-        hsp_mask.sum(), lsp_mask.sum(),
-        asi_min, asi_max,
-        len(valid_hsp_angles), len(valid_lsp_angles)
-    )
+📊 System Statistics (EUR_USD H1, 700 bars):
+• ASI range: [{asi_min:.0f}, {asi_max:.0f}] USD per 100k lot
+• Swing points: {hsp_mask.sum()} HSP + {lsp_mask.sum()} LSP detected
+• HSP angles: {len(valid_hsp_angles)} valid calculations
+• LSP angles: {len(valid_lsp_angles)} valid calculations  
+• Direction: {dir_stats}
+• Volatility: {vol_stats}
+
+🎯 Complete 4-indicator edge discovery system operational!
+"""
     
-    ax7.text(0.05, 0.8, implementation_text, fontsize=10, transform=ax7.transAxes,
+    ax9.text(0.05, 0.8, implementation_text, fontsize=10, transform=ax9.transAxes,
              verticalalignment='top', fontfamily='monospace')
-    ax7.set_xlim(0, 1)
-    ax7.set_ylim(0, 1)
-    ax7.axis('off')
+    ax9.set_xlim(0, 1)
+    ax9.set_ylim(0, 1)
+    ax9.axis('off')
     
     # Format x-axis for time
     if 'time' in plot_data.columns:

@@ -2,25 +2,32 @@
 
 Hybrid machine learning system for 1-hour FX return prediction using TCNAE + LightGBM across 20 currency pairs.
 
-## 🚀 Latest Updates - Wilder's ASI Implementation
+## 🚀 Latest Updates - Complete 4-Indicator System
 
-The Accumulative Swing Index (ASI) has been completely reimplemented according to Wilder's original specification with modern enhancements:
+A comprehensive technical analysis system implementing all 4 planned indicators for edge discovery:
 
-### Key Features:
-- **USD Normalization**: OHLC prices converted to USD per 100k standard lot for cross-instrument comparability
-- **Dynamic Limit Move**: L = 3 × ATR (Average True Range in USD terms) adapts to market volatility  
-- **Wilder's SI Formula**: 50 × (N/R) × (K/L) with no capping for natural range
-- **Wilder's Original R Formula**: 3-scenario calculation per original specification
-- **Linear Angle Mapping**: degrees (-90°, +90°) mapped to (-1, +1) using linear transformation
-- **Significant Swing Points**: 3-bar alternating constraint algorithm for meaningful trend changes
+### 🔧 4-Indicator System:
+1. **ASI (Accumulative Swing Index)**: Wilder's formula with USD normalization
+2. **HSP Angles**: High swing point regression slopes 
+3. **LSP Angles**: Low swing point regression slopes
+4. **Direction**: ADX-based directional strength indicator
+5. **Volatility**: ATR z-score normalized volatility measure
 
-### Implementation Results:
-- ✅ **700 EUR_USD H1 bars** processed successfully
-- ✅ **140 HSP, 140 LSP** significant swing points detected
-- ✅ **ASI range**: [-523, 282] USD per 100k lot (uncapped)
-- ✅ **682 HSP, 680 LSP** valid angle calculations with linear mapping
-- ✅ **SI range**: [-100, 100] with 50x multiplier (natural bounds)
-- ✅ **Cross-instrument compatibility** through USD normalization
+### ⚙️ Technical Specifications:
+- **USD Normalization**: OHLC converted to USD per 100k lot for cross-instrument comparison
+- **Wilder's ASI**: 50x multiplier, uncapped SI, dynamic L = 3×ATR calculation
+- **Linear Angle Mapping**: Regression slopes mapped from degrees to [-1, +1] range
+- **Direction Scaling**: tanh(ADX/25) for bounded [0, 1] directional strength
+- **Volatility Transform**: Normalized arctan for bounded [0, 1] volatility levels
+
+### 📊 Implementation Results (EUR_USD H1, 700 bars):
+- ✅ **ASI**: 700 valid values, range [-523, 282] USD per 100k lot
+- ✅ **HSP Angles**: 682 valid (97.4%), range [-0.981, 0.984] 
+- ✅ **LSP Angles**: 680 valid (97.1%), range [-0.977, 0.980]
+- ✅ **Direction**: 673 valid (96.1%), range [0.558, 0.986]
+- ✅ **Volatility**: 188 valid (26.9%), range [0.227, 0.858]
+- ✅ **Swing Points**: 140 HSP + 140 LSP detected
+- ✅ **Cross-instrument ready** via USD normalization
 
 ## Quick Start
 
@@ -34,8 +41,8 @@ python3 scripts/generate_features.py --sample
 # Process specific instrument
 python3 scripts/generate_features.py --instrument EUR_USD
 
-# Generate features with charts
-python3 scripts/generate_features.py --sample --charts
+# Generate comprehensive 4-indicator system charts
+python3 scripts/chart_all_indicators.py
 
 # Download all 20 FX pairs historical data
 python scripts/download_all_fx_data.py
@@ -69,7 +76,7 @@ IS_DEMO=false
 - **LightGBM:** Gradient boosting for final predictions
 - **Context Tensor:** Cross-instrument information sharing
 - **20 FX Pairs:** EUR_USD, GBP_USD, USD_JPY, etc.
-- **Features:** 4 causal indicators per instrument (ASI with USD normalization & uncapped SI, HSP/LSP angle slopes with linear mapping, volatility with ATR zscore, scaled ADX direction)
+- **Features:** Complete 4-indicator system per instrument: ASI (USD normalized), HSP/LSP angles (linear mapped), Direction (ADX scaled), Volatility (ATR z-score normalized)
 
 ## Data Pipeline
 
