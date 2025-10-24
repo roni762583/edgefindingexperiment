@@ -11,7 +11,36 @@ NEVER proactively create documentation files (*.md) or README files. Only create
 
 This is a **PRODUCTION-GRADE, MISSION-CRITICAL** trading system. There is **ZERO TOLERANCE** for shortcuts, assumptions, or incomplete implementations.
 
+## 🏦 OANDA LIVE TRADING ENVIRONMENT
+
+**MANDATORY**: This system uses **LIVE OANDA trading accounts** with **REAL MONEY**. 
+
+### OANDA Configuration Requirements:
+- **Environment**: `OANDA_ENVIRONMENT=live` (NOT practice)
+- **API Endpoints**: Live trading endpoints only (api-fxtrade.oanda.com)
+- **Official v20 Library**: Use ONLY the official OANDA v20 Python library (v20>=3.0.25.0)
+- **Rate Limits**: Respect production rate limits for live accounts
+- **Error Handling**: Fail fast on any API errors - no retries that could cause financial loss
+
+### Live Trading Safety:
+- **Data Download Only**: Initially used for historical data retrieval
+- **No Automated Trading**: Trading decisions require explicit human authorization
+- **Position Monitoring**: All positions must be tracked and logged
+- **Risk Management**: Hard stops and position size limits mandatory
+
 ## ⚡ ABSOLUTE REQUIREMENTS
+### 0. AVOID WRITTING NEW SCRIPTS, FIX/DEBUG EXISTING ONES!
+SCRIPT CREATION POLICY - STRICT RULES
+
+    AVOID CREATING NEW SCRIPTS - Always fix/debug/improve existing scripts first
+    IF A NEW SCRIPT IS ABSOLUTELY NECESSARY:
+        Temporary scripts (testing/debugging/one-off operations):
+            MUST be placed in /tmp/ directory (create if needed)
+            Name with descriptive prefix: temp_[purpose]_[timestamp].py
+        Permanent scripts (essential project functionality):
+            MUST inform user and get explicit confirmation BEFORE creation
+            Explain WHY existing scripts cannot be modified
+            Show exact location and purpose
 
 ### 1. FOLLOW INSTRUCTIONS EXACTLY
 - **DO NOT** assume what the user wants
@@ -230,21 +259,56 @@ market_edge_finder_experiment/
 
 ## Development Commands
 
-This project is in early planning stage. When implemented:
-
+**Data Download & Processing:**
+- **Primary Download**: `python download_real_data_v20.py` (saves to CSV first)
 - Data preprocessing: `python scripts/run_preprocessing.py`
+- Feature engineering: `python scripts/run_complete_data_pipeline.py`
+
+**Training & Inference:**
 - Training: `python scripts/run_training.py` 
 - Inference: `python scripts/run_inference.py`
 - Backtesting: `python scripts/backtest_edges.py`
+
+**Docker:**
 - Docker build: `docker-compose build`
 - Docker run: `docker-compose up`
+
+## Data Storage Strategy
+
+1. **CSV First**: Download complete 3-year datasets as CSV files (human readable, debuggable)
+2. **Verify Completeness**: Ensure all 26,280 hours (~3 years) downloaded successfully
+3. **Convert to Parquet**: Only after verification, convert to Parquet for performance
+
+**Verification Commands:**
+```bash
+ls -la data/raw/*.csv | wc -l  # Should show 20 files
+wc -l data/raw/*.csv           # Should show ~26,280 lines each
+```
 
 ## Training Pipeline
 
 1. **Stage 1**: TCNAE pretraining with reconstruction loss
 2. **Stage 2**: TCNAE → LightGBM hybrid training
 3. **Stage 3**: Optional cooperative residual learning
-4. **Stage 4**: Adaptive teacher forcing with context tensor
+4. **Stage 4**: Adaptive teacher forcing with data-driven α_t
+
+### Adaptive Teacher Forcing Details
+
+The system uses correlation-driven adaptive teacher forcing with the formula:
+
+```python
+# Data-driven correlation-based blending
+α_t = min(1.0, max(0.0, correlation_measure))
+C_{t-1}^{input} = (1 - α_t) * C_{t-1}^{true} + α_t * C_{t-1}^{pred}
+```
+
+Where:
+- **α_t**: Adaptive blending coefficient based on model correlation performance
+- **correlation_measure**: Rolling correlation between predictions and targets
+- **C_{t-1}^{true}**: True context from actual market data
+- **C_{t-1}^{pred}**: Predicted context from model outputs
+
+This ensures stable training progression from teacher-forced (α_t=0) to fully autonomous (α_t=1) based on actual model performance rather than fixed schedules.
 
 ## Key Implementation Notes
 
@@ -254,6 +318,27 @@ This project is in early planning stage. When implemented:
 - Adaptive teacher forcing blends true vs predicted context based on model correlation
 - Multiprocessing parallelizes feature computation across 20 FX pairs
 - Optional GPU support via PyTorch Metal (Mac) or CUDA
+
+## Data Handling Requirements
+
+### Storage Optimization
+- **Primary Storage**: Parquet files with Snappy compression (~12-35MB for 3 years)
+- **Metadata Management**: SQLite for run tracking, checksums, and orchestration
+- **Partitioning**: By year/month for efficient read pruning in walk-forward validation
+- **Compression Ratio**: ~2-6x with Parquet/Snappy vs raw binary data
+
+### Data Quality & Alignment
+- **UTC Alignment**: All timestamps must be converted to UTC for consistency
+- **Missing Bar Handling**: Explicit interpolation or gap filling strategies
+- **API Rate Limiting**: Exponential backoff and request throttling for OANDA API
+- **Data Integrity**: MD5/SHA256 checksums stored in SQLite for each Parquet file
+- **Atomic Writes**: Write to temp files then atomic move to prevent partial reads
+
+### Error Handling Requirements
+- **API Limits**: Handle OANDA rate limits with exponential backoff
+- **Missing Data**: Explicit handling strategies, no silent approximations
+- **Network Failures**: Resume capabilities with metadata tracking
+- **Data Validation**: Strict validation of all OHLCV data before storage
 
 ## Evaluation Metrics
 

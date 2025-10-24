@@ -1,102 +1,149 @@
-# Multi-stage Docker build for Market Edge Finder Experiment
-# Production-ready container with optimized layers
+# syntax=docker/dockerfile:1.4
+# Market Edge Finder - Optimized Multi-Stage Build with Advanced Caching
 
-# Build stage
-FROM python:3.11-slim as builder
+# ================================
+# Base Stage - Common Dependencies
+# ================================
+FROM python:3.11-slim as base
 
 # Set build arguments
-ARG BUILD_ENV=production
-ARG PYTHON_VERSION=3.11
+ARG BUILDPLATFORM
+ARG TARGETPLATFORM
+ARG USE_CUDA=false
 
-# Install system dependencies for building
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    make \
-    libc6-dev \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Copy requirements first for better caching
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Production stage
-FROM python:3.11-slim as production
-
-# Set environment variables
+# Environment variables for optimization
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PATH="/opt/venv/bin:$PATH" \
-    PYTHONPATH="/app"
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DEBIAN_FRONTEND=noninteractive
 
-# Install runtime dependencies only
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+# Create app user and directories
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash appuser && \
+    mkdir -p /app /data /models /logs /results /cache && \
+    chown -R appuser:appuser /app /data /models /logs /results /cache
 
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
+# Install system dependencies with cache mounting
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+        git \
+        libgomp1 \
+        ca-certificates \
+        && \
+    rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for security
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+# ================================
+# Dependencies Stage - Python Packages with Cache
+# ================================
+FROM base as deps
 
-# Create application directory
+# Copy requirements first for optimal caching
+COPY requirements.txt /tmp/requirements.txt
+
+# Install Python dependencies with advanced cache mounting
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/root/.cache/torch \
+    --mount=type=cache,target=/root/.cache/lightgbm \
+    pip install --upgrade pip setuptools wheel && \
+    pip install -r /tmp/requirements.txt
+
+# Install PyTorch with GPU support if requested (with cache)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    if [ "$USE_CUDA" = "true" ]; then \
+        pip install torch>=2.1.0+cu118 -f https://download.pytorch.org/whl/cu118/torch_stable.html; \
+    fi
+
+# ================================
+# Production Stage - Minimal Runtime
+# ================================
+FROM base as production
+
+# Performance optimization environment variables
+ENV OMP_NUM_THREADS=4 \
+    MKL_NUM_THREADS=4 \
+    OPENBLAS_NUM_THREADS=4 \
+    NUMBA_CACHE_DIR=/cache/numba \
+    TORCH_HOME=/cache/torch \
+    PYTHONPATH=/app:$PYTHONPATH
+
+# Copy dependencies from deps stage
+COPY --from=deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=deps /usr/local/bin /usr/local/bin
+
+# Set working directory
+WORKDIR /app
+
+# Copy only necessary application files (optimized layer caching)
+COPY --chown=appuser:appuser . /app/
+
+# Create cache directories with proper permissions
+RUN mkdir -p /cache/numba /cache/torch /cache/pip && \
+    chown -R appuser:appuser /cache
+
+# Switch to app user for security
+USER appuser
+
+# Enhanced health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import sys; import torch; import lightgbm; import pandas; import v20; print('✅ Health check passed'); sys.exit(0)" || exit 1
+
+# Default production command
+CMD ["python", "scripts/run_inference.py", "--daemon"]
+
+# ================================
+# Data Download Stage - Specialized for Data Operations
+# ================================
+FROM production as data-downloader
+
+# Environment for data operations
+ENV DATA_DOWNLOAD_MODE=true \
+    LOG_LEVEL=INFO
+
+# Volume mounts will be handled by docker-compose
+VOLUME ["/data", "/logs", "/results"]
+
+# Override entrypoint for data operations
+ENTRYPOINT ["python", "scripts/run_preprocessing.py"]
+
+# Default arguments for data download
+CMD ["--download-data", "--progress", "--verify"]
+
+# ================================
+# Development Stage - Full Dev Environment
+# ================================
+FROM deps as development
+
+# Install development tools with cache
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install \
+        jupyter \
+        ipython \
+        notebook \
+        jupyterlab \
+        pytest-xdist \
+        black \
+        mypy \
+        flake8
+
+# Set working directory
 WORKDIR /app
 
 # Copy application code
-COPY --chown=appuser:appuser . .
+COPY --chown=appuser:appuser . /app/
 
-# Create necessary directories with correct permissions
-RUN mkdir -p /app/data/raw /app/data/processed /app/logs /app/models/checkpoints && \
-    chown -R appuser:appuser /app
-
-# Switch to non-root user
+# Switch to app user
 USER appuser
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import sys; sys.exit(0)" || exit 1
+# Set Python path
+ENV PYTHONPATH=/app:$PYTHONPATH
 
-# Default command
-CMD ["python", "scripts/run_preprocessing.py", "--help"]
+# Expose Jupyter port
+EXPOSE 8888
 
-# Development stage
-FROM production as development
-
-# Switch back to root for development tools
-USER root
-
-# Install development dependencies
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    vim \
-    htop \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install development Python packages
-COPY requirements-dev.txt* ./
-RUN if [ -f requirements-dev.txt ]; then \
-        pip install --no-cache-dir -r requirements-dev.txt; \
-    fi
-
-# Install pre-commit hooks (if available)
-RUN if [ -f .pre-commit-config.yaml ]; then \
-        pip install pre-commit && \
-        pre-commit install; \
-    fi
-
-# Switch back to appuser
-USER appuser
-
-# Development command
-CMD ["bash"]
+# Default command for development
+CMD ["python", "-m", "jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root"]

@@ -12,9 +12,10 @@ from scipy.stats import zscore
 import warnings
 from datetime import datetime, timedelta
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import sys
+from collections import deque
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -26,10 +27,8 @@ logger = logging.getLogger(__name__)
 @dataclass
 class FeatureConfig:
     """Configuration for feature engineering parameters"""
-    swing_lookback: int = 20  # Bars to look back for swing highs/lows
     volatility_window: int = 14  # ATR calculation window
     direction_window: int = 14  # ADX calculation window
-    min_swing_distance: int = 3  # Minimum bars between swing points
     outlier_threshold: float = 3.0  # Z-score threshold for outlier removal
     normalization_window: int = 500  # Rolling window for normalization
 
@@ -124,6 +123,74 @@ class SwingPointDetector:
                 swing_lows.append((i, low_prices[i]))
         
         return swing_lows
+
+
+@dataclass
+class WilderSwingDetector:
+    """
+    Proper swing point detection based on new_muzero methodology.
+    Uses a lookback window to ensure the swing point is the absolute highest/lowest
+    in the window, not just higher/lower than immediate neighbors.
+    """
+    lookback: int = 2  # Bars before and after (total window = 5)
+    asi_buffer: deque = field(default_factory=deque)
+    last_hsp_value: Optional[float] = None
+    last_lsp_value: Optional[float] = None
+    
+    def __post_init__(self):
+        # Need lookback*2 + 1 total bars (e.g., 2+1+2 = 5 bars)
+        self.asi_buffer = deque(maxlen=self.lookback * 2 + 1)
+    
+    def detect_swing_points(self, asi_value: float) -> Dict[str, Optional[float]]:
+        """
+        Detect HSP/LSP using proper swing detection methodology.
+        
+        Args:
+            asi_value: Current ASI value
+            
+        Returns:
+            Dict with 'hsp' and 'lsp' keys, values are ASI levels or None.
+            The swing point detected is from the middle of the buffer (lookback bars ago).
+        """
+        self.asi_buffer.append(asi_value)
+        
+        result = {'hsp': None, 'lsp': None}
+        
+        # Need full window to detect swing points
+        if len(self.asi_buffer) < self.lookback * 2 + 1:
+            return result
+        
+        # Middle bar is the potential swing point
+        mid_idx = self.lookback
+        middle_asi = self.asi_buffer[mid_idx]
+        
+        # Check if middle bar is highest in entire window (HSP)
+        is_hsp = all(
+            middle_asi >= self.asi_buffer[i] 
+            for i in range(len(self.asi_buffer)) if i != mid_idx
+        )
+        
+        # Check if middle bar is lowest in entire window (LSP)
+        is_lsp = all(
+            middle_asi <= self.asi_buffer[i]
+            for i in range(len(self.asi_buffer)) if i != mid_idx
+        )
+        
+        # HSP: Only register if exceeded previous HSP
+        if is_hsp and middle_asi > (self.last_hsp_value or float('-inf')):
+            self.last_hsp_value = middle_asi
+            result['hsp'] = middle_asi
+        
+        # LSP: Only register if exceeded (below) previous LSP  
+        if is_lsp and middle_asi < (self.last_lsp_value or float('inf')):
+            self.last_lsp_value = middle_asi
+            result['lsp'] = middle_asi
+        
+        return result
+    
+    def get_swing_point_offset(self) -> int:
+        """Return the offset where swing points are detected (lookback bars ago)."""
+        return self.lookback
 
 
 class TechnicalIndicators:
@@ -229,12 +296,235 @@ class TechnicalIndicators:
                     adx[i] = (adx[i-1] * (period - 1) + dx[i]) / period
         
         return adx
+    
+    @staticmethod
+    def normalize_ohlc_to_usd(open_prices: np.ndarray, high: np.ndarray, low: np.ndarray, 
+                             close: np.ndarray, instrument: str) -> tuple:
+        """
+        Convert raw OHLC prices to USD values per standard lot (100,000 units)
+        
+        Args:
+            open_prices, high, low, close: Raw price arrays
+            instrument: FX pair name (e.g., 'EUR_USD')
+            
+        Returns:
+            tuple: (open_usd, high_usd, low_usd, close_usd) normalized to USD
+        """
+        pip_size, pip_value_usd = get_pip_value(instrument)
+        
+        # Convert prices to pips
+        open_pips = open_prices / pip_size
+        high_pips = high / pip_size  
+        low_pips = low / pip_size
+        close_pips = close / pip_size
+        
+        # Convert pips to USD values
+        open_usd = open_pips * pip_value_usd
+        high_usd = high_pips * pip_value_usd
+        low_usd = low_pips * pip_value_usd
+        close_usd = close_pips * pip_value_usd
+        
+        return open_usd, high_usd, low_usd, close_usd
+    
+    @staticmethod
+    def calculate_atr_usd(high_usd: np.ndarray, low_usd: np.ndarray, close_usd: np.ndarray, period: int = 14) -> np.ndarray:
+        """
+        Calculate Average True Range in USD terms
+        
+        Args:
+            high_usd, low_usd, close_usd: USD-normalized price arrays
+            period: ATR calculation period (default 14)
+            
+        Returns:
+            ATR values in USD
+        """
+        if len(close_usd) < 2:
+            return np.full(len(close_usd), np.nan)
+        
+        true_range = np.full(len(close_usd), np.nan)
+        
+        for i in range(1, len(close_usd)):
+            # True Range components
+            tr1 = high_usd[i] - low_usd[i]                    # H - L
+            tr2 = abs(high_usd[i] - close_usd[i-1])          # |H - C_prev|
+            tr3 = abs(low_usd[i] - close_usd[i-1])           # |L - C_prev|
+            
+            true_range[i] = max(tr1, tr2, tr3)
+        
+        # Calculate ATR using exponential moving average
+        atr = np.full(len(close_usd), np.nan)
+        alpha = 2.0 / (period + 1)  # EMA smoothing factor
+        
+        # Initialize with first period simple average
+        first_valid = period
+        if first_valid < len(true_range):
+            atr[first_valid] = np.nanmean(true_range[1:first_valid+1])
+            
+            # Apply EMA for subsequent values
+            for i in range(first_valid + 1, len(true_range)):
+                if not np.isnan(true_range[i]) and not np.isnan(atr[i-1]):
+                    atr[i] = alpha * true_range[i] + (1 - alpha) * atr[i-1]
+        
+        return atr
+    
+    @staticmethod
+    def calculate_asi_grok_spec(open_prices: np.ndarray, high: np.ndarray, low: np.ndarray, 
+                               close: np.ndarray, instrument: str, atr_period: int = 14, 
+                               atr_multiplier: float = 3.0) -> tuple:
+        """
+        Calculate Accumulation Swing Index (ASI) per Grok specification
+        
+        Implements USD normalization, dynamic limit move, and proper Wilder formulas
+        
+        Args:
+            open_prices, high, low, close: Raw price arrays
+            instrument: FX pair name for USD normalization
+            atr_period: Period for ATR calculation (default 14)
+            atr_multiplier: Multiplier for limit move (default 3.0)
+            
+        Returns:
+            tuple: (asi, atr_usd, si_values) - ASI values, ATR in USD, individual SI values
+        """
+        EPSILON = 1e-10
+        
+        if len(close) < 2:
+            return np.full(len(close), np.nan), np.full(len(close), np.nan), np.full(len(close), np.nan)
+        
+        # Step 1: Normalize OHLC to USD values
+        open_usd, high_usd, low_usd, close_usd = TechnicalIndicators.normalize_ohlc_to_usd(
+            open_prices, high, low, close, instrument)
+        
+        # Step 2: Calculate ATR in USD terms
+        atr_usd = TechnicalIndicators.calculate_atr_usd(high_usd, low_usd, close_usd, atr_period)
+        
+        # Initialize output arrays
+        asi = np.full(len(close), 0.0, dtype=np.float64)
+        si_values = np.full(len(close), 0.0, dtype=np.float64)
+        asi[0] = 0.0
+        si_values[0] = 0.0
+        
+        for i in range(1, len(close)):
+            # Current bar values (subscript 2 in Grok notation)
+            C2 = close_usd[i]     # Current close (USD)
+            O2 = open_usd[i]      # Current open (USD)
+            H2 = high_usd[i]      # Current high (USD)
+            L2 = low_usd[i]       # Current low (USD)
+            
+            # Previous bar values (subscript 1 in Grok notation)
+            C1 = close_usd[i-1]   # Previous close (USD)
+            O1 = open_usd[i-1]    # Previous open (USD)
+            
+            # Step 3: Set dynamic limit move L = 3 × ATR
+            if not np.isnan(atr_usd[i]) and atr_usd[i] > 0:
+                L = atr_multiplier * atr_usd[i]
+            else:
+                # Fallback: use simple range if ATR not available
+                recent_range = np.nanmean([abs(high_usd[j] - low_usd[j]) for j in range(max(0, i-10), i+1)])
+                L = atr_multiplier * recent_range if not np.isnan(recent_range) else 1.0
+            
+            # Step 4: Calculate Swing Index (SI) per Grok specification
+            
+            # Numerator (N) - same as Wilder
+            N = (C2 - C1) + 0.5 * (C2 - O2) + 0.25 * (C1 - O1)
+            
+            # Range (R) - Wilder's original specification (3 scenarios, take maximum)
+            term1 = abs(H2 - C1) - 0.5 * abs(L2 - C1) + 0.25 * abs(C1 - O1)
+            term2 = abs(L2 - C1) - 0.5 * abs(H2 - C1) + 0.25 * abs(C1 - O1)
+            term3 = (H2 - L2) + 0.25 * abs(C1 - O1)
+            
+            R = max(term1, term2, term3)
+            
+            # Ensure R > 0
+            if R <= 0:
+                R = EPSILON
+            
+            # Limit Factor (K) - Wilder's specification
+            K = max(abs(H2 - C1), abs(L2 - C1))
+            
+            # SI Calculation with Wilder's 50x multiplier (no capping)
+            if L > EPSILON:
+                SI = 50.0 * (N / R) * (K / L)
+                
+                # Round to nearest integer (no capping)
+                SI = round(SI)
+                # SI = max(-100, min(100, SI))  # COMMENTED OUT: No capping
+            else:
+                SI = 0
+            
+            si_values[i] = SI
+            
+            # Step 5: Accumulate swing index
+            asi[i] = asi[i-1] + SI
+        
+        return asi, atr_usd, si_values
+    
+    @staticmethod
+    def calculate_swing_index(open_prices: np.ndarray, high: np.ndarray, low: np.ndarray, 
+                            close: np.ndarray, limit_move: float = 0.01) -> np.ndarray:
+        """
+        Calculate Swing Index (SI) - non-accumulated version of ASI
+        
+        Args:
+            open_prices: Open prices
+            high: High prices  
+            low: Low prices
+            close: Close prices
+            limit_move: Maximum one-day move as percentage
+            
+        Returns:
+            Swing Index values
+        """
+        if len(close) < 2:
+            return np.full(len(close), np.nan)
+        
+        si = np.full(len(close), np.nan)
+        si[0] = 0.0
+        
+        for i in range(1, len(close)):
+            c = close[i]
+            h = high[i]
+            l = low[i]
+            o = open_prices[i]
+            
+            c_prev = close[i-1]
+            h_prev = high[i-1]
+            l_prev = low[i-1]
+            o_prev = open_prices[i-1]
+            
+            # True Range components
+            tr1 = abs(h - c_prev)
+            tr2 = abs(l - c_prev)
+            tr3 = abs(h - l)
+            
+            tr = max(tr1, tr2, tr3)
+            
+            if tr == 0:
+                si[i] = 0
+                continue
+            
+            k = max(tr1, tr2)
+            
+            # R calculation
+            if tr1 >= max(tr2, tr3):
+                r = tr1 - 0.5 * tr2 + 0.25 * (c_prev - o_prev)
+            elif tr2 >= max(tr1, tr3):
+                r = tr2 - 0.5 * tr1 + 0.25 * (c_prev - o_prev)
+            else:
+                r = tr3 + 0.25 * (c_prev - o_prev)
+            
+            # Swing Index for this bar
+            if k != 0 and limit_move != 0 and r != 0:
+                si[i] = 50 * ((c - c_prev + 0.5 * (c - o) + 0.25 * (c_prev - o_prev)) / r) * (k / limit_move)
+            else:
+                si[i] = 0
+        
+        return si
 
 
 class FXFeatureGenerator:
     """
     Main feature generator for FX instruments
-    Produces 4 causal indicators per instrument: slope_high, slope_low, volatility, direction
+    Produces ASI (Accumulation Swing Index) only
     """
     
     def __init__(self, config: Optional[FeatureConfig] = None):
@@ -245,10 +535,6 @@ class FXFeatureGenerator:
             config: Feature configuration parameters
         """
         self.config = config or FeatureConfig()
-        self.swing_detector = SwingPointDetector(
-            min_distance=self.config.min_swing_distance,
-            lookback=self.config.swing_lookback
-        )
         
         logger.info(f"FXFeatureGenerator initialized with config: {self.config}")
     
@@ -308,6 +594,28 @@ class FXFeatureGenerator:
         
         return slope_high, slope_low
     
+    def calculate_normalized_asi(self, open_prices: np.ndarray, high: np.ndarray, low: np.ndarray, 
+                               close: np.ndarray, instrument: str) -> tuple:
+        """
+        Calculate normalized ASI using Grok specification
+        
+        Args:
+            open_prices, high, low, close: Raw price arrays
+            instrument: FX pair name for USD normalization
+            
+        Returns:
+            tuple: (normalized_asi, angle_slopes) - ASI values and angle slopes
+        """
+        # Use the new Grok specification ASI calculation
+        asi, atr_usd, si_values = TechnicalIndicators.calculate_asi_grok_spec(
+            open_prices, high, low, close, instrument
+        )
+        
+        # For now, angle_slopes is not used but kept for compatibility
+        angle_slopes = np.full(len(asi), np.nan)
+        
+        return asi, angle_slopes
+    
     def calculate_volatility(self, high: np.ndarray, low: np.ndarray, close: np.ndarray) -> np.ndarray:
         """
         Calculate normalized volatility using ATR
@@ -345,6 +653,337 @@ class FXFeatureGenerator:
         direction = adx / 100.0
         
         return direction
+    
+    def calculate_asi(self, open_prices: np.ndarray, high: np.ndarray, low: np.ndarray, close: np.ndarray, limit_move: float = 1.0) -> np.ndarray:
+        """
+        Calculate Accumulation Swing Index using Wilder's exact specification.
+        
+        Args:
+            open_prices: Open prices
+            high: High prices
+            low: Low prices
+            close: Close prices
+            limit_move: Maximum one-day move (L=1.0, so K/L = K unscaled)
+            
+        Returns:
+            Raw ASI array (no normalization per spec)
+        """
+        asi = TechnicalIndicators.calculate_asi(open_prices, high, low, close, limit_move)
+        return asi
+    
+    def calculate_normalized_asi(self, open_prices: np.ndarray, high: np.ndarray, low: np.ndarray, 
+                               close: np.ndarray, instrument: str, atr_period: int = 14) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Calculate Normalized ASI per specification:
+        - Dollar normalization (USD per standard lot)
+        - L = 3 × ATR adaptive limit
+        - SI scaling with 100 multiplier and [-100, +100] capping
+        - Angle normalization for regression slopes between swing points
+        
+        Args:
+            open_prices: Open prices
+            high: High prices  
+            low: Low prices
+            close: Close prices
+            instrument: Instrument name (e.g., 'EUR_USD')
+            atr_period: ATR calculation period
+            
+        Returns:
+            Tuple of (normalized_asi, angle_normalized_slopes)
+        """
+        
+        # Step 1: Get instrument parameters
+        pip_size, pip_value = get_pip_value(instrument)
+        
+        # Step 2: Convert OHLC to USD per standard lot
+        ohlc_pips = {
+            'open': open_prices / pip_size,
+            'high': high / pip_size, 
+            'low': low / pip_size,
+            'close': close / pip_size
+        }
+        
+        ohlc_usd = {
+            'open': ohlc_pips['open'] * pip_value,
+            'high': ohlc_pips['high'] * pip_value,
+            'low': ohlc_pips['low'] * pip_value, 
+            'close': ohlc_pips['close'] * pip_value
+        }
+        
+        # Step 3: Calculate ATR in USD
+        atr_usd = self._calculate_atr_usd(ohlc_usd['high'], ohlc_usd['low'], ohlc_usd['close'], atr_period)
+        
+        # Step 4: Set adaptive limit move L = 3 × ATR
+        limit_move = 3.0 * atr_usd
+        
+        # Step 5: Calculate normalized SI with USD values
+        normalized_asi = self._calculate_si_usd(ohlc_usd, limit_move)
+        
+        # Step 6: Calculate angle-normalized slopes between swing points
+        angle_slopes = self._calculate_angle_normalized_slopes(normalized_asi)
+        
+        return normalized_asi, angle_slopes
+    
+    def _calculate_atr_usd(self, high_usd: np.ndarray, low_usd: np.ndarray, close_usd: np.ndarray, period: int) -> np.ndarray:
+        """Calculate Average True Range in USD terms."""
+        n = len(high_usd)
+        tr = np.full(n, np.nan)
+        
+        for i in range(1, n):
+            tr1 = high_usd[i] - low_usd[i]  # High - Low
+            tr2 = abs(high_usd[i] - close_usd[i-1])  # High - Prev Close  
+            tr3 = abs(low_usd[i] - close_usd[i-1])   # Low - Prev Close
+            tr[i] = max(tr1, tr2, tr3)
+        
+        # Calculate EMA of True Range
+        atr = np.full(n, np.nan)
+        alpha = 2.0 / (period + 1)
+        
+        # Initialize with simple average of first 'period' values
+        first_valid = period
+        if first_valid < n:
+            atr[first_valid] = np.nanmean(tr[1:first_valid+1])
+            
+            # EMA for subsequent values
+            for i in range(first_valid + 1, n):
+                if not np.isnan(tr[i]):
+                    atr[i] = alpha * tr[i] + (1 - alpha) * atr[i-1]
+                else:
+                    atr[i] = atr[i-1]
+        
+        return atr
+    
+    def _calculate_si_usd(self, ohlc_usd: Dict[str, np.ndarray], limit_move: np.ndarray) -> np.ndarray:
+        """Calculate Swing Index using USD-normalized values."""
+        EPSILON = 1e-10
+        
+        close = ohlc_usd['close']
+        open_prices = ohlc_usd['open']
+        high = ohlc_usd['high'] 
+        low = ohlc_usd['low']
+        
+        n = len(close)
+        si = np.full(n, 0.0)
+        asi = np.full(n, 0.0)
+        
+        for i in range(1, n):
+            if np.isnan(limit_move[i]) or limit_move[i] <= 0:
+                continue
+                
+            # Current and previous values (USD)
+            C2, O2, H2, L2 = close[i], open_prices[i], high[i], low[i]
+            C1, O1 = close[i-1], open_prices[i-1]
+            
+            # Numerator N
+            N = (C2 - C1) + 0.5 * (C2 - O2) + 0.25 * (C1 - O1)
+            
+            # Range R (Wilder's formula)
+            term1 = abs(H2 - C1)
+            term2 = abs(L2 - C1)
+            term3 = H2 - L2
+            max_term = max(term1, term2, term3)
+            min_term = min(term1, term2)
+            R = max_term - 0.5 * min_term + 0.25 * abs(C1 - O1)
+            R = max(R, EPSILON)  # Avoid division by zero
+            
+            # Limit factor K
+            K = max(term1, term2)
+            
+            # SI calculation with 100 multiplier and capping
+            L = limit_move[i]
+            si_raw = 100.0 * (N / R) * (K / L) if L > 0 else 0.0
+            
+            # Round and cap SI to [-100, +100]
+            si[i] = max(-100.0, min(100.0, round(si_raw)))
+            
+            # Accumulate ASI
+            asi[i] = asi[i-1] + si[i]
+        
+        return asi
+    
+    def _calculate_angle_normalized_slopes(self, asi: np.ndarray) -> np.ndarray:
+        """
+        Calculate angle-normalized slopes between swing points.
+        Maps arctan(slope) from (-90°, +90°) to (-1, +1).
+        """
+        n = len(asi)
+        angle_slopes = np.full(n, np.nan)
+        
+        # Detect swing points (simplified - using existing method)
+        swing_highs, swing_lows = self._detect_swing_points_simple(asi)
+        
+        # Combine and sort swing points
+        all_swings = []
+        for i in range(n):
+            if swing_highs[i]:
+                all_swings.append((i, asi[i], 'H'))
+            elif swing_lows[i]:
+                all_swings.append((i, asi[i], 'L'))
+        
+        # Calculate slopes between consecutive swing points
+        for j in range(1, len(all_swings)):
+            x1, y1, _ = all_swings[j-1]
+            x2, y2, _ = all_swings[j]
+            
+            if x2 != x1:  # Avoid division by zero
+                slope = (y2 - y1) / (x2 - x1)  # USD per bar
+                
+                # Method 1: Angle-normalized (recommended)
+                angle_rad = np.arctan(slope)  # (-π/2, π/2)
+                angle_deg = np.degrees(angle_rad)  # (-90, +90)
+                # Linear mapping: mappedValue = outMin + (outMax - outMin) * ((value - inMin) / (inMax - inMin))
+                # Map (-90, +90) to (-1, +1)
+                angle_norm = -1.0 + (1.0 - (-1.0)) * ((angle_deg - (-90.0)) / (90.0 - (-90.0)))
+                
+                # Fill in the slope for all bars between swing points
+                for k in range(x1, min(x2 + 1, n)):
+                    angle_slopes[k] = angle_norm
+        
+        return angle_slopes
+    
+    def _detect_swing_points_simple(self, values: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Simple 3-bar swing point detection for slope calculation."""
+        n = len(values)
+        highs = np.full(n, False)
+        lows = np.full(n, False)
+        
+        for i in range(2, n):
+            if i >= 3:
+                middle_idx = i - 2
+                left_idx = i - 3
+                right_idx = i - 1
+                
+                # HSP: middle > both neighbors
+                if (not np.isnan(values[middle_idx]) and 
+                    not np.isnan(values[left_idx]) and 
+                    not np.isnan(values[right_idx])):
+                    
+                    if (values[middle_idx] > values[left_idx] and 
+                        values[middle_idx] > values[right_idx]):
+                        highs[middle_idx] = True
+                    
+                    # LSP: middle < both neighbors
+                    if (values[middle_idx] < values[left_idx] and 
+                        values[middle_idx] < values[right_idx]):
+                        lows[middle_idx] = True
+        
+        return highs, lows
+    
+    def _detect_swing_points_with_alternating_constraint(self, values: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Detect swing points with alternating constraint - NO LOOK-AHEAD BIAS.
+        
+        Returns:
+            Tuple of (local_hsp, local_lsp, sig_hsp, sig_lsp) boolean arrays
+        """
+        n = len(values)
+        
+        # Step 1: Find local extremes - NO LOOK-AHEAD BIAS
+        local_hsp = np.full(n, False)
+        local_lsp = np.full(n, False)
+        for i in range(2, n):  # Start from bar 2 to check pattern on bar i-2
+            # Check if bar (i-2) was a 3-bar pattern using bars (i-3), (i-2), (i-1)
+            if i >= 3:  # Need at least 3 bars for the pattern
+                middle_idx = i - 2
+                left_idx = i - 3  
+                right_idx = i - 1
+                
+                # Skip NaN values
+                if (np.isnan(values[middle_idx]) or np.isnan(values[left_idx]) or np.isnan(values[right_idx])):
+                    continue
+                
+                # HSP: middle bar higher than both neighbors
+                if values[middle_idx] > values[left_idx] and values[middle_idx] > values[right_idx]:
+                    local_hsp[middle_idx] = True
+                
+                # LSP: middle bar lower than both neighbors  
+                if values[middle_idx] < values[left_idx] and values[middle_idx] < values[right_idx]:
+                    local_lsp[middle_idx] = True
+
+        # Step 2: Apply alternating constraint - NO LOOK-AHEAD BIAS
+        sig_hsp = np.full(n, False)
+        sig_lsp = np.full(n, False)
+        last_hsp_idx = None
+        last_lsp_idx = None
+        for i in range(n):  # Check all bars for local extremes
+            if local_hsp[i]:
+                if last_hsp_idx is None or (last_lsp_idx is not None and last_lsp_idx > last_hsp_idx):
+                    sig_hsp[i] = True
+                    last_hsp_idx = i
+            if local_lsp[i]:
+                if last_lsp_idx is None or (last_hsp_idx is not None and last_hsp_idx > last_lsp_idx):
+                    sig_lsp[i] = True
+                    last_lsp_idx = i
+        
+        return local_hsp, local_lsp, sig_hsp, sig_lsp
+    
+    def _calculate_angle_slopes_between_last_two_hsp_lsp(self, values: np.ndarray, sig_hsp: np.ndarray, sig_lsp: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Calculate angle-normalized slopes for regression lines between:
+        1. Last two HSPs (High Swing Points)
+        2. Last two LSPs (Low Swing Points)
+        Maps arctan(slope) from (-90°, +90°) to (-1, +1).
+        Forward-fills previous values until new slopes are available.
+        """
+        n = len(values)
+        hsp_angles = np.full(n, np.nan)
+        lsp_angles = np.full(n, np.nan)
+        
+        # Get HSP indices and values
+        hsp_indices = np.where(sig_hsp)[0]
+        hsp_values = values[hsp_indices]
+        
+        # Get LSP indices and values  
+        lsp_indices = np.where(sig_lsp)[0]
+        lsp_values = values[lsp_indices]
+        
+        # Track last calculated angles for forward-filling
+        last_hsp_angle = np.nan
+        last_lsp_angle = np.nan
+        
+        # Calculate HSP regression angles with forward-filling
+        for i in range(n):
+            # Find last two HSPs before current bar
+            valid_hsp_idx = hsp_indices[hsp_indices <= i]
+            if len(valid_hsp_idx) >= 2:
+                # Get last two HSPs
+                idx1, idx2 = valid_hsp_idx[-2], valid_hsp_idx[-1]
+                y1, y2 = values[idx1], values[idx2]
+                
+                if not np.isnan(y1) and not np.isnan(y2) and idx2 != idx1:
+                    slope = (y2 - y1) / (idx2 - idx1)  # ASI units per bar
+                    angle_rad = np.arctan(slope)  # (-π/2, π/2)
+                    angle_deg = np.degrees(angle_rad)  # (-90, +90)
+                    # Linear mapping: mappedValue = outMin + (outMax - outMin) * ((value - inMin) / (inMax - inMin))
+                    # Map (-90, +90) to (-1, +1)
+                    last_hsp_angle = -1.0 + (1.0 - (-1.0)) * ((angle_deg - (-90.0)) / (90.0 - (-90.0)))
+            
+            # Forward-fill: use last calculated angle if available
+            if not np.isnan(last_hsp_angle):
+                hsp_angles[i] = last_hsp_angle
+        
+        # Calculate LSP regression angles with forward-filling
+        for i in range(n):
+            # Find last two LSPs before current bar
+            valid_lsp_idx = lsp_indices[lsp_indices <= i]
+            if len(valid_lsp_idx) >= 2:
+                # Get last two LSPs
+                idx1, idx2 = valid_lsp_idx[-2], valid_lsp_idx[-1]
+                y1, y2 = values[idx1], values[idx2]
+                
+                if not np.isnan(y1) and not np.isnan(y2) and idx2 != idx1:
+                    slope = (y2 - y1) / (idx2 - idx1)  # ASI units per bar
+                    angle_rad = np.arctan(slope)  # (-π/2, π/2)
+                    angle_deg = np.degrees(angle_rad)  # (-90, +90)
+                    # Linear mapping: mappedValue = outMin + (outMax - outMin) * ((value - inMin) / (inMax - inMin))
+                    # Map (-90, +90) to (-1, +1)
+                    last_lsp_angle = -1.0 + (1.0 - (-1.0)) * ((angle_deg - (-90.0)) / (90.0 - (-90.0)))
+            
+            # Forward-fill: use last calculated angle if available
+            if not np.isnan(last_lsp_angle):
+                lsp_angles[i] = last_lsp_angle
+        
+        return hsp_angles, lsp_angles
     
     def normalize_features(self, feature_array: np.ndarray, method: str = 'arctan') -> np.ndarray:
         """
@@ -405,40 +1044,79 @@ class FXFeatureGenerator:
         close_prices = df['close'].values
         timestamps = df.index if isinstance(df.index, pd.DatetimeIndex) else None
         
-        # Calculate raw features
-        logger.debug(f"Calculating swing slopes for {instrument}")
-        slope_high, slope_low = self.calculate_swing_slopes(high_prices, low_prices, timestamps)
+        # Calculate new normalized ASI (per specification) - PRIMARY METHOD
+        logger.debug(f"Calculating normalized ASI for {instrument}")
+        try:
+            normalized_asi, angle_slopes = self.calculate_normalized_asi(
+                df['open'].values, high_prices, low_prices, close_prices, instrument
+            )
+        except Exception as e:
+            logger.warning(f"Failed to calculate normalized ASI for {instrument}: {e}")
+            # Fall back to NaN arrays if calculation fails
+            normalized_asi = np.full(len(df), np.nan)
+            angle_slopes = np.full(len(df), np.nan)
         
-        logger.debug(f"Calculating volatility for {instrument}")
-        volatility = self.calculate_volatility(high_prices, low_prices, close_prices)
+        # # COMMENTED OUT: Original ASI method (kept for reference)
+        # logger.debug(f"Calculating original ASI for {instrument}")
+        # asi = self.calculate_asi(df['open'].values, high_prices, low_prices, close_prices)
         
-        logger.debug(f"Calculating direction for {instrument}")
-        direction = self.calculate_direction(high_prices, low_prices, close_prices)
+        # Apply swing point algorithm to normalized ASI (PRIMARY METHOD)
+        logger.debug(f"Calculating swing points for {instrument}")
         
-        # Normalize features
-        logger.debug(f"Normalizing features for {instrument}")
-        slope_high_norm = self.normalize_features(slope_high, 'arctan')
-        slope_low_norm = self.normalize_features(slope_low, 'arctan')
-        volatility_norm = self.normalize_features(volatility, 'zscore')
-        direction_norm = self.normalize_features(direction, 'zscore')
+        # Apply to normalized ASI  
+        local_hsp, local_lsp, sig_hsp, sig_lsp = self._detect_swing_points_with_alternating_constraint(normalized_asi)
         
-        # Add to result DataFrame
-        result_df[f'{instrument}_slope_high'] = slope_high_norm
-        result_df[f'{instrument}_slope_low'] = slope_low_norm
-        result_df[f'{instrument}_volatility'] = volatility_norm
-        result_df[f'{instrument}_direction'] = direction_norm
+        # Calculate angle slopes between last two HSPs and LSPs
+        hsp_angles, lsp_angles = self._calculate_angle_slopes_between_last_two_hsp_lsp(normalized_asi, sig_hsp, sig_lsp)
         
-        # Log feature statistics
-        for feature_name, feature_data in [
-            ('slope_high', slope_high_norm),
-            ('slope_low', slope_low_norm),
-            ('volatility', volatility_norm),
-            ('direction', direction_norm)
-        ]:
-            valid_count = np.sum(~np.isnan(feature_data))
-            if valid_count > 0:
-                logger.debug(f"{instrument}_{feature_name}: {valid_count} valid values, "
-                           f"range [{np.nanmin(feature_data):.3f}, {np.nanmax(feature_data):.3f}]")
+        # # COMMENTED OUT: Original ASI swing point detection (kept for reference)
+        # local_hsp_orig, local_lsp_orig, sig_hsp_orig, sig_lsp_orig = self._detect_swing_points_with_alternating_constraint(asi)
+        # angle_slopes_original = self._calculate_angle_slopes_from_swing_points(asi, sig_hsp_orig, sig_lsp_orig)
+
+        # Add normalized ASI columns (PRIMARY METHOD) - no instrument prefix
+        result_df['asi'] = normalized_asi  # Main ASI column (normalized)
+        result_df['local_hsp'] = local_hsp
+        result_df['local_lsp'] = local_lsp
+        result_df['sig_hsp'] = sig_hsp
+        result_df['sig_lsp'] = sig_lsp
+        result_df['hsp_angles'] = hsp_angles  # Regression angle between last two HSPs
+        result_df['lsp_angles'] = lsp_angles  # Regression angle between last two LSPs
+        
+        # Forward-fill angle values once they exist (don't fill initial NaN values)
+        result_df['hsp_angles'] = result_df['hsp_angles'].ffill()
+        result_df['lsp_angles'] = result_df['lsp_angles'].ffill()
+        
+        # # COMMENTED OUT: Original ASI columns (kept for reference)
+        # result_df[f'{instrument}_asi_original'] = asi
+        # result_df[f'{instrument}_local_hsp_orig'] = local_hsp_orig
+        # result_df[f'{instrument}_local_lsp_orig'] = local_lsp_orig
+        # result_df[f'{instrument}_sig_hsp_orig'] = sig_hsp_orig
+        # result_df[f'{instrument}_sig_lsp_orig'] = sig_lsp_orig
+        # result_df[f'{instrument}_angle_slopes_original'] = angle_slopes_original
+        
+        # REMOVED: Redundant hsp/lsp value columns (use sig_hsp/sig_lsp + asi instead)
+        
+        # # COMMENTED OUT: Original ASI chart columns (kept for reference)
+        # hsp_values_orig = np.where(sig_hsp_orig, asi, np.nan)
+        # lsp_values_orig = np.where(sig_lsp_orig, asi, np.nan)
+        # result_df[f'{instrument}_hsp_orig'] = hsp_values_orig
+        # result_df[f'{instrument}_lsp_orig'] = lsp_values_orig
+        
+        # Log normalized ASI statistics (PRIMARY METHOD)
+        valid_count = np.sum(~np.isnan(normalized_asi))
+        hsp_count = np.sum(sig_hsp)
+        lsp_count = np.sum(sig_lsp)
+        
+        if valid_count > 0:
+            logger.debug(f"{instrument}_asi (normalized): {valid_count} valid values, "
+                       f"range [{np.nanmin(normalized_asi):.1f}, {np.nanmax(normalized_asi):.1f}]")
+            logger.debug(f"{instrument} swing points: {hsp_count} HSP, {lsp_count} LSP detected")
+        
+        # # COMMENTED OUT: Original ASI logging (kept for reference)
+        # if valid_count_orig > 0:
+        #     logger.debug(f"{instrument}_asi (original): {valid_count_orig} valid values, "
+        #                f"range [{np.nanmin(asi):.3f}, {np.nanmax(asi):.3f}]")
+        #     logger.debug(f"{instrument} original swing points: {hsp_count_orig} HSP, {lsp_count_orig} LSP detected")
         
         return result_df
     
@@ -455,8 +1133,7 @@ class FXFeatureGenerator:
         """
         validation_results = {}
         
-        feature_columns = [f'{instrument}_slope_high', f'{instrument}_slope_low', 
-                          f'{instrument}_volatility', f'{instrument}_direction']
+        feature_columns = [f'{instrument}_asi']
         
         for col in feature_columns:
             if col not in df.columns:

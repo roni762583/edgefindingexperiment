@@ -1,0 +1,76 @@
+# Optimized Docker Compose for OANDA Data Download
+# Uses advanced caching to avoid re-downloading dependencies
+
+services:
+  # Data download service - Optimized for OANDA data acquisition
+  data-downloader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: data-downloader
+      cache_from:
+        - edge-finder:deps
+        - edge-finder:base
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+    container_name: edge-finder-downloader
+    environment:
+      - PYTHONPATH=/app
+      - OANDA_ENVIRONMENT=${OANDA_ENVIRONMENT:-practice}
+      - DATA_DOWNLOAD_MODE=true
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    env_file:
+      - .env
+    volumes:
+      # Mount local directories for persistent data
+      - ./data:/data
+      - ./logs:/logs
+      - ./results:/results
+      # Cache directories for performance
+      - pip-cache:/root/.cache/pip
+      - torch-cache:/cache/torch
+      - numba-cache:/cache/numba
+    networks:
+      - edge-finder-network
+    restart: "no"  # One-time download task
+    command: ["--download-data", "--instruments=all", "--granularity=H1", "--days=1095", "--progress"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import v20; import pandas; print('✅ Dependencies ready')"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+
+  # Verification service - Quick dependency check
+  requirements-check:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+      cache_from:
+        - edge-finder:deps
+        - edge-finder:base
+    container_name: edge-finder-requirements-check
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - pip-cache:/root/.cache/pip
+    networks:
+      - edge-finder-network
+    restart: "no"
+    command: ["python", "scripts/verify_requirements.py"]
+    profiles:
+      - verification
+
+networks:
+  edge-finder-network:
+    driver: bridge
+    name: edge-finder-network
+
+volumes:
+  pip-cache:
+    driver: local
+  torch-cache:
+    driver: local  
+  numba-cache:
+    driver: local
