@@ -30,6 +30,16 @@ class InstrumentState:
     recent_highs: deque = field(default_factory=lambda: deque(maxlen=50))  # (index, price)
     recent_lows: deque = field(default_factory=lambda: deque(maxlen=50))   # (index, price)
     
+    # HSP/LSP tracking for slope calculation (like batch method)
+    hsp_indices: deque = field(default_factory=lambda: deque(maxlen=10))   # Indices of HSPs
+    hsp_values: deque = field(default_factory=lambda: deque(maxlen=10))    # ASI values at HSPs
+    lsp_indices: deque = field(default_factory=lambda: deque(maxlen=10))   # Indices of LSPs  
+    lsp_values: deque = field(default_factory=lambda: deque(maxlen=10))    # ASI values at LSPs
+    
+    # Last calculated angles for forward-filling (like batch method)
+    last_hsp_angle: float = np.nan
+    last_lsp_angle: float = np.nan
+    
     # ATR State (Dollar Scaling)  
     atr_ema: float = 0.0
     prev_close_usd: float = 0.0
@@ -55,6 +65,7 @@ class InstrumentState:
     # Historical data for slope calculation
     high_history: deque = field(default_factory=lambda: deque(maxlen=100))
     low_history: deque = field(default_factory=lambda: deque(maxlen=100))
+    asi_history: deque = field(default_factory=lambda: deque(maxlen=100))
 
 @dataclass
 class MultiInstrumentState:
@@ -133,11 +144,17 @@ class IncrementalIndicatorCalculator:
         if state.bar_count == 0:
             # Store first bar data
             state.prev_close = ohlc['close']
+            # Initialize history
+            state.high_history.append(ohlc['high'])
+            state.low_history.append(ohlc['low'])
             return 0.0
         
         # Calculate directional movement
-        high_diff = ohlc['high'] - (state.high_history[-1] if state.high_history else ohlc['high'])
-        low_diff = (state.low_history[-1] if state.low_history else ohlc['low']) - ohlc['low']
+        prev_high = state.high_history[-1] if state.high_history else ohlc['high']
+        prev_low = state.low_history[-1] if state.low_history else ohlc['low']
+        
+        high_diff = ohlc['high'] - prev_high
+        low_diff = prev_low - ohlc['low']
         
         dm_plus = high_diff if high_diff > low_diff and high_diff > 0 else 0
         dm_minus = low_diff if low_diff > high_diff and low_diff > 0 else 0
@@ -179,8 +196,10 @@ class IncrementalIndicatorCalculator:
         else:
             state.adx_value = self.adx_alpha * dx + (1 - self.adx_alpha) * state.adx_value
         
-        # Update previous close
+        # Update previous close and add current values to history
         state.prev_close = ohlc['close']
+        state.high_history.append(ohlc['high'])
+        state.low_history.append(ohlc['low'])
         
         return state.adx_value
     
@@ -259,27 +278,168 @@ class IncrementalIndicatorCalculator:
         return len(state.recent_highs) > 0 and state.recent_highs[-1][0] == current_idx - min_distance, \
                len(state.recent_lows) > 0 and state.recent_lows[-1][0] == current_idx - min_distance
     
-    def calculate_slope(self, points: deque, min_points: int = 3) -> float:
-        """Calculate regression slope from swing points"""
-        if len(points) < min_points:
-            return np.nan
+    def calculate_asi_incremental(
+        self, 
+        ohlc: Dict[str, float], 
+        state: InstrumentState,
+        limit_multiplier: float = 3.0
+    ) -> float:
+        """Calculate ASI (Accumulation Swing Index) incrementally"""
         
-        # Take last min_points for slope calculation
-        recent_points = list(points)[-min_points:]
+        if state.bar_count == 0:
+            # Initialize first bar
+            state.asi_value = 0.0
+            return 0.0
         
-        if len(recent_points) < 2:
-            return np.nan
+        # Get previous OHLC (stored in history)
+        if len(state.high_history) < 2:
+            return state.asi_value
+            
+        # Current and previous values
+        C2 = ohlc['close']
+        O2 = ohlc['open'] 
+        H2 = ohlc['high']
+        L2 = ohlc['low']
         
-        # Extract x (indices) and y (prices)
-        x = np.array([p[0] for p in recent_points])
-        y = np.array([p[1] for p in recent_points])
+        C1 = state.prev_close
+        O1 = state.high_history[-2] if len(state.high_history) >= 2 else ohlc['open']  # Approximation
         
-        # Calculate slope using least squares
-        if len(x) > 1:
-            slope = np.polyfit(x, y, 1)[0]
-            return slope
+        # Calculate ATR for limit move
+        atr = state.atr_ema if state.atr_ema > 0 else abs(H2 - L2)
+        L = limit_multiplier * atr if atr > 0 else 1.0
         
-        return np.nan
+        # Swing Index calculation (Wilder's method)
+        N = (C2 - C1) + 0.5 * (C2 - O2) + 0.25 * (C1 - O1)
+        
+        # Range calculation
+        term1 = abs(H2 - C1) - 0.5 * abs(L2 - C1) + 0.25 * abs(C1 - O1)
+        term2 = abs(L2 - C1) - 0.5 * abs(H2 - C1) + 0.25 * abs(C1 - O1)
+        term3 = (H2 - L2) + 0.25 * abs(C1 - O1)
+        
+        R = max(term1, term2, term3)
+        if R <= 0:
+            R = 1e-10
+            
+        # Limit Factor
+        K = max(abs(H2 - C1), abs(L2 - C1))
+        
+        # Swing Index
+        if L > 1e-10:
+            SI = 50.0 * (N / R) * (K / L)
+            SI = round(SI)  # Round to nearest integer
+        else:
+            SI = 0
+            
+        # Accumulate
+        state.asi_value += SI
+        
+        return state.asi_value
+    
+    def detect_hsp_lsp_incremental(
+        self,
+        asi_value: float,
+        state: InstrumentState,
+        min_distance: int = 3
+    ) -> Tuple[bool, bool]:
+        """
+        Detect HSP/LSP using ASI values with alternating constraint
+        Matches the batch method's _detect_swing_points_with_alternating_constraint
+        """
+        current_idx = state.bar_count
+        
+        # Add current ASI to history (we need this for swing detection)
+        state.asi_history.append(asi_value)
+        
+        if len(state.asi_history) < min_distance * 2 + 1:
+            return False, False
+            
+        # Check for swing high/low in ASI
+        check_idx = len(state.asi_history) - min_distance - 1
+        if check_idx < min_distance:
+            return False, False
+            
+        is_hsp = True
+        is_lsp = True
+        check_asi = state.asi_history[check_idx]
+        
+        # Check for swing high
+        for i in range(check_idx - min_distance, check_idx + min_distance + 1):
+            if i != check_idx and i >= 0 and i < len(state.asi_history):
+                if state.asi_history[i] >= check_asi:
+                    is_hsp = False
+                    break
+                    
+        # Check for swing low
+        for i in range(check_idx - min_distance, check_idx + min_distance + 1):
+            if i != check_idx and i >= 0 and i < len(state.asi_history):
+                if state.asi_history[i] <= check_asi:
+                    is_lsp = False
+                    break
+        
+        # Apply alternating constraint (like batch method)
+        detected_hsp = False
+        detected_lsp = False
+        
+        if is_hsp:
+            # Check if last significant point was LSP
+            if len(state.lsp_indices) > len(state.hsp_indices):
+                state.hsp_indices.append(current_idx - min_distance)
+                state.hsp_values.append(check_asi)
+                detected_hsp = True
+            elif len(state.hsp_indices) == 0:  # First HSP
+                state.hsp_indices.append(current_idx - min_distance)
+                state.hsp_values.append(check_asi)
+                detected_hsp = True
+                
+        if is_lsp:
+            # Check if last significant point was HSP  
+            if len(state.hsp_indices) > len(state.lsp_indices):
+                state.lsp_indices.append(current_idx - min_distance)
+                state.lsp_values.append(check_asi)
+                detected_lsp = True
+            elif len(state.lsp_indices) == 0:  # First LSP
+                state.lsp_indices.append(current_idx - min_distance) 
+                state.lsp_values.append(check_asi)
+                detected_lsp = True
+                
+        return detected_hsp, detected_lsp
+    
+    def calculate_angle_slopes_incremental(
+        self,
+        state: InstrumentState
+    ) -> Tuple[float, float]:
+        """
+        Calculate angle slopes from last two HSP/LSP points
+        Exactly matches batch method's _calculate_angle_slopes_between_last_two_hsp_lsp
+        """
+        # Calculate HSP angle
+        if len(state.hsp_indices) >= 2:
+            # Get last two HSPs
+            idx1, idx2 = state.hsp_indices[-2], state.hsp_indices[-1]
+            y1, y2 = state.hsp_values[-2], state.hsp_values[-1]
+            
+            if idx2 != idx1:  # Avoid division by zero
+                slope = (y2 - y1) / (idx2 - idx1)  # ASI units per bar
+                angle_rad = np.arctan(slope)  # (-π/2, π/2)
+                angle_deg = np.degrees(angle_rad)  # (-90, +90)
+                # Linear mapping: (-90, +90) to (-1, +1)
+                state.last_hsp_angle = -1.0 + (1.0 - (-1.0)) * ((angle_deg - (-90.0)) / (90.0 - (-90.0)))
+        
+        # Calculate LSP angle  
+        if len(state.lsp_indices) >= 2:
+            # Get last two LSPs
+            idx1, idx2 = state.lsp_indices[-2], state.lsp_indices[-1]
+            y1, y2 = state.lsp_values[-2], state.lsp_values[-1]
+            
+            if idx2 != idx1:  # Avoid division by zero
+                slope = (y2 - y1) / (idx2 - idx1)  # ASI units per bar
+                angle_rad = np.arctan(slope)  # (-π/2, π/2)
+                angle_deg = np.degrees(angle_rad)  # (-90, +90)
+                # Linear mapping: (-90, +90) to (-1, +1)  
+                state.last_lsp_angle = -1.0 + (1.0 - (-1.0)) * ((angle_deg - (-90.0)) / (90.0 - (-90.0)))
+        
+        # Return current angles (forward-filled like batch method)
+        return state.last_hsp_angle, state.last_lsp_angle
 
 def update_indicators(
     new_ohlc: Dict[str, float],
@@ -322,11 +482,15 @@ def update_indicators(
         state.adx_history.append(adx_value)
     direction = calculator.calculate_percentile_scaling(adx_value, state.adx_history) if adx_value > 0 else np.nan
     
-    # 3. Detect swing points and calculate slopes
-    is_swing_high, is_swing_low = calculator.detect_swing_points(new_ohlc, state)
+    # 3. Calculate ASI and detect HSP/LSP for slope calculation
+    asi_value = calculator.calculate_asi_incremental(new_ohlc, state)
+    state.asi_value = asi_value
     
-    slope_high = calculator.calculate_slope(state.recent_highs)
-    slope_low = calculator.calculate_slope(state.recent_lows)
+    # Detect HSP/LSP using ASI values (like batch method)
+    is_hsp, is_lsp = calculator.detect_hsp_lsp_incremental(asi_value, state)
+    
+    # Calculate angle slopes from last two HSP/LSP points (like batch method)
+    slope_high, slope_low = calculator.calculate_angle_slopes_incremental(state)
     
     # 4. Calculate price change (5th indicator)
     if state.bar_count > 1 and state.prev_close > 0:
