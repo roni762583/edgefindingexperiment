@@ -616,60 +616,39 @@ class FXFeatureGenerator:
         
         return asi, angle_slopes
     
-    def calculate_volatility(self, high: np.ndarray, low: np.ndarray, close: np.ndarray) -> np.ndarray:
+    def calculate_volatility(self, high: np.ndarray, low: np.ndarray, close: np.ndarray, instrument: str = "EUR_USD") -> np.ndarray:
         """
-        Calculate normalized volatility using ATR z-score with normalized arctan transformation
+        Calculate volatility using ATR/(pipsize*50) scaling
         
-        Formula: (arctan(zscore(ATR)) + π/2) / π
-        Where zscore = (ATR - SMA20(ATR)) / STDEV500(ATR)
+        Formula: ATR/(pipsize*50) where 1.0 = 50 pips
         
         Args:
             high: High prices
             low: Low prices
             close: Close prices
+            instrument: FX instrument pair for pip size calculation
             
         Returns:
-            Normalized volatility array bounded to [0, 1] exactly
+            ATR/(pipsize*50) volatility array (linear scaling)
         """
         # Calculate ATR
         atr = TechnicalIndicators.calculate_atr(high, low, close, self.config.volatility_window)
         
-        # Calculate z-score normalization
-        # SMA20 of ATR
-        sma_window = 20
-        atr_sma = np.full(len(atr), np.nan)
-        for i in range(sma_window - 1, len(atr)):
-            if not np.any(np.isnan(atr[i-sma_window+1:i+1])):
-                atr_sma[i] = np.mean(atr[i-sma_window+1:i+1])
+        # Get pip size for the instrument
+        pip_size, _ = get_pip_value(instrument)
         
-        # STDEV500 of ATR (use available data if less than 500)
-        stdev_window = min(500, len(atr))
-        atr_stdev = np.full(len(atr), np.nan)
-        for i in range(stdev_window - 1, len(atr)):
-            start_idx = max(0, i - stdev_window + 1)
-            atr_slice = atr[start_idx:i+1]
-            if not np.any(np.isnan(atr_slice)) and len(atr_slice) > 1:
-                atr_stdev[i] = np.std(atr_slice, ddof=1)
-        
-        # Calculate z-score
-        zscore = np.full(len(atr), np.nan)
-        valid_mask = ~(np.isnan(atr) | np.isnan(atr_sma) | np.isnan(atr_stdev)) & (atr_stdev > 0)
-        zscore[valid_mask] = (atr[valid_mask] - atr_sma[valid_mask]) / atr_stdev[valid_mask]
-        
-        # Apply normalized arctan transformation to map to [0, 1] range
-        # arctan(zscore) ranges from -π/2 to +π/2
-        # Normalize: (arctan(zscore) + π/2) / π maps to [0, 1]
-        volatility = np.full(len(zscore), np.nan)
-        valid_zscore = ~np.isnan(zscore)
-        volatility[valid_zscore] = (np.arctan(zscore[valid_zscore]) + np.pi/2) / np.pi
+        # Calculate ATR/(pipsize*50) scaling
+        volatility = np.full(len(atr), np.nan)
+        valid_mask = ~np.isnan(atr)
+        volatility[valid_mask] = atr[valid_mask] / (pip_size * 50)
         
         return volatility
     
     def calculate_direction(self, high: np.ndarray, low: np.ndarray, close: np.ndarray) -> np.ndarray:
         """
-        Calculate directional movement intensity using scaled ADX
+        Calculate directional movement intensity using simple ADX scaling
         
-        Formula: tanh(ADX/25) for smooth [0.6, 1.0] range
+        Formula: ADX/100 for direct linear scaling
         
         Args:
             high: High prices
@@ -677,18 +656,159 @@ class FXFeatureGenerator:
             close: Close prices
             
         Returns:
-            Direction intensity array bounded to approximately [0.6, 1.0]
+            Direction intensity array with ADX/100 scaling
         """
         # Calculate ADX with configured window
         adx = TechnicalIndicators.calculate_adx(high, low, close, self.config.direction_window)
         
-        # Apply tanh scaling for smooth bounded output
-        # tanh(ADX/25) maps typical ADX range [15-60] to [0.6-1.0]
+        # Apply simple ADX/100 scaling (no hyperbolic transformation)
         direction = np.full(len(adx), np.nan)
         valid_mask = ~np.isnan(adx)
-        direction[valid_mask] = np.tanh(adx[valid_mask] / 25.0)
+        direction[valid_mask] = adx[valid_mask] / 100.0
         
         return direction
+    
+    def calculate_log_returns(self, close: np.ndarray) -> np.ndarray:
+        """
+        Calculate log returns using log(c/c₋₁)
+        
+        Formula: log(close[t] / close[t-1]) = log(close[t]) - log(close[t-1])
+        
+        Args:
+            close: Close prices
+            
+        Returns:
+            Log returns array (first value is NaN)
+        """
+        log_returns = np.full(len(close), np.nan)
+        
+        # Calculate log returns starting from index 1
+        for i in range(1, len(close)):
+            if not (np.isnan(close[i]) or np.isnan(close[i-1])) and close[i-1] > 0:
+                log_returns[i] = np.log(close[i] / close[i-1])
+        
+        return log_returns
+    
+    def calculate_atr_dollar_scaled(self, high: np.ndarray, low: np.ndarray, close: np.ndarray, instrument: str) -> np.ndarray:
+        """
+        Calculate ATR with dollar scaling (USD per standard lot)
+        
+        Process:
+        1. Convert OHLC to pips
+        2. Convert pips to USD per standard lot (100,000 units)
+        3. Calculate ATR in USD terms
+        
+        Args:
+            high: High prices
+            low: Low prices  
+            close: Close prices
+            instrument: FX instrument pair
+            
+        Returns:
+            ATR array in USD per standard lot
+        """
+        # Get pip size and pip value for the instrument
+        pip_size, pip_value_usd = get_pip_value(instrument)
+        
+        # Step 1: Convert OHLC to pips
+        high_pips = high / pip_size
+        low_pips = low / pip_size
+        close_pips = close / pip_size
+        
+        # Step 2: Convert pips to USD (pip_value_usd is already per standard lot)
+        high_usd = high_pips * pip_value_usd
+        low_usd = low_pips * pip_value_usd
+        close_usd = close_pips * pip_value_usd
+        
+        # Step 3: Calculate ATR in USD terms
+        atr_usd = TechnicalIndicators.calculate_atr_usd(high_usd, low_usd, close_usd, self.config.volatility_window)
+        
+        return atr_usd
+    
+    def calculate_percentile_scaling(self, values: np.ndarray, window: int = 200) -> np.ndarray:
+        """
+        Apply percentile scaling (100 bins) with rolling window
+        
+        Maps values to [0,1] based on their percentile rank within rolling window
+        
+        Args:
+            values: Input values to scale
+            window: Rolling window size (default 200 bars)
+            
+        Returns:
+            Scaled values in [0,1] range
+        """
+        scaled = np.full(len(values), np.nan)
+        
+        # Start scaling after we have enough data
+        for i in range(window - 1, len(values)):
+            if not np.isnan(values[i]):
+                # Get window of historical values
+                start_idx = max(0, i - window + 1)
+                window_values = values[start_idx:i+1]
+                
+                # Remove NaN values
+                valid_values = window_values[~np.isnan(window_values)]
+                
+                if len(valid_values) > 0:
+                    # Calculate percentile rank
+                    current_value = values[i]
+                    count_below = np.sum(valid_values < current_value)
+                    percentile_rank = count_below / len(valid_values)
+                    
+                    # Scale to [0,1] and cap at 1.0 (99th percentile protection)
+                    scaled[i] = min(1.0, percentile_rank)
+        
+        return scaled
+    
+    def calculate_volatility_dollar_percentile(self, high: np.ndarray, low: np.ndarray, close: np.ndarray, instrument: str) -> np.ndarray:
+        """
+        Calculate volatility using dollar-scaled ATR with percentile scaling
+        
+        Process per specification:
+        1. Dollar-scale ATR (USD per standard lot)
+        2. Apply percentile scaling (100 bins, 200-bar window)
+        
+        Args:
+            high: High prices
+            low: Low prices
+            close: Close prices
+            instrument: FX instrument pair
+            
+        Returns:
+            Volatility scaled to [0,1] range
+        """
+        # Step 1: Calculate dollar-scaled ATR
+        atr_usd = self.calculate_atr_dollar_scaled(high, low, close, instrument)
+        
+        # Step 2: Apply percentile scaling
+        volatility_scaled = self.calculate_percentile_scaling(atr_usd, window=200)
+        
+        return volatility_scaled
+    
+    def calculate_direction_percentile(self, high: np.ndarray, low: np.ndarray, close: np.ndarray) -> np.ndarray:
+        """
+        Calculate direction using ADX with percentile scaling
+        
+        Process per specification:
+        1. Calculate raw ADX (0-100)
+        2. Apply percentile scaling (100 bins, 200-bar window)
+        
+        Args:
+            high: High prices
+            low: Low prices
+            close: Close prices
+            
+        Returns:
+            Direction scaled to [0,1] range
+        """
+        # Step 1: Calculate raw ADX
+        adx = TechnicalIndicators.calculate_adx(high, low, close, self.config.direction_window)
+        
+        # Step 2: Apply percentile scaling  
+        direction_scaled = self.calculate_percentile_scaling(adx, window=200)
+        
+        return direction_scaled
     
     def calculate_asi(self, open_prices: np.ndarray, high: np.ndarray, low: np.ndarray, close: np.ndarray, limit_move: float = 1.0) -> np.ndarray:
         """
@@ -1057,14 +1177,21 @@ class FXFeatureGenerator:
     
     def generate_features_single_instrument(self, df: pd.DataFrame, instrument: str) -> pd.DataFrame:
         """
-        Generate all 4 features for a single instrument
+        Generate all 5 features for a single instrument
+        
+        Features:
+        1. slope_high: Linear regression slope of swing highs
+        2. slope_low: Linear regression slope of swing lows  
+        3. volatility: Dollar-scaled ATR with percentile scaling [0,1]
+        4. direction: ADX with percentile scaling [0,1]
+        5. log_returns: log(c/c₋₁) log returns
         
         Args:
             df: OHLCV DataFrame with columns ['open', 'high', 'low', 'close', 'volume']
             instrument: Instrument name for logging
             
         Returns:
-            DataFrame with 4 feature columns added
+            DataFrame with 5 feature columns added
         """
         if not all(col in df.columns for col in ['high', 'low', 'close']):
             raise ValueError(f"DataFrame missing required OHLC columns for {instrument}")
@@ -1105,40 +1232,49 @@ class FXFeatureGenerator:
         # Calculate angle slopes between last two HSPs and LSPs
         hsp_angles, lsp_angles = self._calculate_angle_slopes_between_last_two_hsp_lsp(normalized_asi, sig_hsp, sig_lsp)
         
-        # Calculate direction indicator (ADX-based)
+        # Calculate direction indicator (ADX with percentile scaling)
         logger.debug(f"Calculating direction indicator for {instrument}")
         try:
-            direction = self.calculate_direction(high_prices, low_prices, close_prices)
+            direction = self.calculate_direction_percentile(high_prices, low_prices, close_prices)
         except Exception as e:
             logger.warning(f"Failed to calculate direction for {instrument}: {e}")
             direction = np.full(len(df), np.nan)
         
-        # Calculate volatility indicator (ATR z-score with arctan)
+        # Calculate volatility indicator (Dollar-scaled ATR with percentile scaling)
         logger.debug(f"Calculating volatility indicator for {instrument}")
         try:
-            volatility = self.calculate_volatility(high_prices, low_prices, close_prices)
+            volatility = self.calculate_volatility_dollar_percentile(high_prices, low_prices, close_prices, instrument)
         except Exception as e:
             logger.warning(f"Failed to calculate volatility for {instrument}: {e}")
             volatility = np.full(len(df), np.nan)
+        
+        # Calculate log returns (5th indicator)
+        logger.debug(f"Calculating log returns for {instrument}")
+        try:
+            log_returns = self.calculate_log_returns(close_prices)
+        except Exception as e:
+            logger.warning(f"Failed to calculate log returns for {instrument}: {e}")
+            log_returns = np.full(len(df), np.nan)
         
         # # COMMENTED OUT: Original ASI swing point detection (kept for reference)
         # local_hsp_orig, local_lsp_orig, sig_hsp_orig, sig_lsp_orig = self._detect_swing_points_with_alternating_constraint(asi)
         # angle_slopes_original = self._calculate_angle_slopes_from_swing_points(asi, sig_hsp_orig, sig_lsp_orig)
 
-        # Add all 4 indicator columns (complete feature set)
-        result_df['asi'] = normalized_asi  # 1. ASI: Wilder's accumulative swing index (USD normalized)
+        # Add all 5 indicator columns (complete feature set)
+        result_df['asi'] = normalized_asi  # ASI: Wilder's accumulative swing index (USD normalized)
         result_df['local_hsp'] = local_hsp
         result_df['local_lsp'] = local_lsp
         result_df['sig_hsp'] = sig_hsp
         result_df['sig_lsp'] = sig_lsp
-        result_df['hsp_angles'] = hsp_angles  # 2. HSP angles: Regression slopes (linear mapped)
-        result_df['lsp_angles'] = lsp_angles  # 2. LSP angles: Regression slopes (linear mapped)
-        result_df['direction'] = direction    # 3. Direction: ADX-based trend strength
-        result_df['volatility'] = volatility  # 4. Volatility: ATR z-score with arctan
+        result_df['slope_high'] = hsp_angles  # 1. Slope High: Regression slopes of swing highs
+        result_df['slope_low'] = lsp_angles   # 2. Slope Low: Regression slopes of swing lows
+        result_df['volatility'] = volatility  # 3. Volatility: Dollar-scaled ATR + percentile [0,1]
+        result_df['direction'] = direction    # 4. Direction: ADX + percentile scaling [0,1]
+        result_df['log_returns'] = log_returns # 5. Log Returns: log(c/c₋₁)
         
-        # Forward-fill angle values once they exist (don't fill initial NaN values)
-        result_df['hsp_angles'] = result_df['hsp_angles'].ffill()
-        result_df['lsp_angles'] = result_df['lsp_angles'].ffill()
+        # Forward-fill slope values once they exist (don't fill initial NaN values)
+        result_df['slope_high'] = result_df['slope_high'].ffill()
+        result_df['slope_low'] = result_df['slope_low'].ffill()
         
         # # COMMENTED OUT: Original ASI columns (kept for reference)
         # result_df[f'{instrument}_asi_original'] = asi

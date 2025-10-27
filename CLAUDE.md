@@ -362,6 +362,64 @@ The project exists as a detailed specification document (`edge-finding-experimen
 4. **MOST RECENT FIRST** - Add new entries at the top of this section
 <!-- 🚨 ADD NEW NOTES BELOW THIS LINE 🚨-->
 
+### [2025-10-27 11:45] ADX-ATR SCALING IMPLEMENTATION - PRODUCTION VALIDATION COMPLETE
+
+#### 🎯 SPECIFICATION COMPLIANCE: ✅ FULLY IMPLEMENTED
+- **Implementation Status**: Production-ready, specification-compliant ADX-ATR scaling
+- **Test Coverage**: 5 FX pairs (EUR_USD, GBP_USD, USD_JPY, GBP_JPY, EUR_CHF)
+- **Validation Method**: Comprehensive testing with visual analysis and statistical verification
+
+#### ✅ TECHNICAL IMPLEMENTATION VERIFIED
+**ATR Dollar Scaling (Per Specification)**:
+- ✅ Convert OHLC to pips using instrument-specific pip sizes
+- ✅ Convert pips to USD per standard lot (100,000 units)
+- ✅ Calculate ATR with 14-period EMA in USD terms
+- ✅ Economic comparability achieved: $69-$194 range across instruments
+
+**Percentile Scaling (Per Specification)**:
+- ✅ 200-bar rolling window for historical context
+- ✅ 100-bin percentile ranking to [0,1] range
+- ✅ 99th percentile capping prevents outlier distortion
+- ✅ Both ATR and ADX use identical methodology
+
+#### 📊 VALIDATION RESULTS
+**Cross-Instrument Performance**:
+- **ATR USD Range**: $69.06 (EUR_CHF) to $193.98 (GBP_JPY)
+- **Volatility Scaling**: Mean 0.441-0.594, std dev 0.050 (excellent consistency)
+- **Direction Scaling**: Mean 0.433-0.572, std dev 0.056 (much better than old ADX/100)
+- **Data Coverage**: 60.2% (expected due to 200-bar window requirement)
+
+**Quality Metrics**:
+- ✅ Perfect [0,1] range compliance
+- ✅ No negative values or overflow
+- ✅ Proper NaN handling for insufficient data
+- ✅ Economic comparability maintained across all pairs
+
+#### 🔧 PRODUCTION-GRADE FEATURES
+- **Error Handling**: Explicit failures, no silent approximations
+- **Type Safety**: Complete type hints and docstrings
+- **Performance**: Vectorized operations where possible
+- **Configurability**: Adjustable windows and thresholds
+- **Logging**: Comprehensive debug and error logging
+
+#### 🚀 NEXT PHASE: VALIDATION ENHANCEMENTS
+**Planned Improvements**:
+1. **Correlation Tests**: Verify >0.8 correlation during high-volatility periods
+2. **Performance**: Vectorized rolling percentile with scipy.stats.rankdata
+3. **Memory**: Expanding window option for better data coverage
+4. **Configuration**: Instrument-specific parameter tuning
+
+#### 📁 FILES UPDATED
+- `features/feature_engineering.py`: Core scaling implementation
+- `scripts/test_adx_atr_scaling.py`: Comprehensive test suite
+- `data/test/adx_atr_scaling_summary.csv`: Cross-instrument results
+- `data/test/adx_atr_scaling_test_EUR_USD.png`: Visual validation
+
+#### 🎉 MILESTONE: ADX-ATR SCALING READY FOR ML PIPELINE
+**Status**: Ready for integration into TCNAE → LightGBM hybrid system
+**Confidence**: High - specification compliance verified with comprehensive testing
+**Risk**: Low - robust error handling and edge case management implemented
+
 ---
 
 ### [2025-10-22 23:30] EDGE FINDING EXPERIMENT - PRODUCTION SETUP COMPLETE

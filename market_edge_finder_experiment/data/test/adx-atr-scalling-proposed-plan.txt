@@ -1,0 +1,82 @@
+Work Plans and Specifications for Developer: Scaling ADX and ATR for Multi-Instrument Machine Learning
+Date: October 27, 2025Prepared by: Grok, built by xAIVersion: 1.0Purpose: This document provides detailed work plans and specifications for implementing scaling methods for the Average Directional Index (ADX) and Average True Range (ATR) indicators. The goal is to make these features suitable for machine learning networks (e.g., a multi-instrument time series CNN-autoencoder for denoising and compression of lags, feeding into LightGBM). The methods ensure comparability across 20 FX pairs (e.g., majors like EUR/USD, GBP/USD; minors like AUD/CAD; exotics like USD/ZAR) by addressing scale variability, avoiding negative values, and adapting to dynamic market conditions. Scaling is based on percentile ranking (100 bins) to provide granularity and robustness.
+The specifications include:
+	•	Instructions for dollar scaling ATR (to normalize to USD per standard lot for economic comparability).
+	•	Complete order of operations for both ATR and ADX scaling.
+	•	Implementation guidelines, formulas, edge cases, and testing recommendations.
+Overview of Recommended Scaling
+	•	ATR Scaling: Unbounded and volatility-sensitive, so apply dollar normalization first, then percentile scaling (100 bins) with a rolling window and capping to [0,1]. This handles unknown future scales and ensures no negatives.
+	•	ADX Scaling: Bounded (0-100) and dimensionless, so no dollar scaling needed. Use the same percentile scaling (100 bins) for consistency with ATR and ML compatibility.
+	•	Rationale: Percentile scaling adapts to data distribution without assuming normality (unlike Z-score), provides 100-bin granularity, and is robust to outliers. It avoids the fixed-scale issues of min-max and negatives from Z-score.
+Assumptions and Prerequisites
+	•	Data Inputs: Time series OHLC (Open, High, Low, Close) prices for each FX pair, with timestamps.
+	•	Environment: Python 3.x with libraries: pandas, numpy (for rolling operations and percentiles).
+	•	Parameters:
+	◦	Standard lot size: 100,000 units.
+	◦	Rolling window: 200 bars (adjustable; e.g., for daily data, ~1 year).
+	◦	ATR period: 14 bars (default from Wilder’s book).
+	◦	ADX period: 14 bars (default).
+	•	FX Pair-Specific Data: Pip size and pip value (e.g., query from an API or store in a config file for real-time rates).
+	•	Output: Scaled ATR and ADX as new columns in a DataFrame, in [0,1] range.
+Work Plan
+The development should follow these phases:
+	1	Phase 1: Data Preparation (1-2 days)
+	◦	Load and clean OHLC data for 20 FX pairs.
+	◦	Compute raw ATR and ADX using standard formulas (e.g., via TA-Lib or custom implementation).
+	2	Phase 2: Dollar Scaling for ATR (1 day)
+	◦	Implement normalization to USD per standard lot.
+	3	Phase 3: Percentile Scaling for ATR and ADX (2-3 days)
+	◦	Apply rolling percentile ranking with capping.
+	◦	Handle edge cases (e.g., initial bars, zero values).
+	4	Phase 4: Integration and Testing (2-3 days)
+	◦	Integrate into CNN-autoencoder-LightGBM pipeline.
+	◦	Test on historical data (e.g., 1 year of 1H bars for 20 pairs).
+	◦	Validate comparability (e.g., correlation of scaled features across pairs).
+	5	Phase 5: Documentation and Optimization (1 day)
+	◦	Document code with comments.
+	◦	Optimize for performance (e.g., vectorized operations).
+Total Estimated Time: 7-10 days for a single developer.
+Specifications and Instructions
+1. Dollar Scaling for ATR
+ATR must be normalized to USD per standard lot before scaling to ensure economic comparability across pairs (e.g., a $50 move on EUR/USD equals $50 on USD/JPY, regardless of pip size).
+Order of Operations
+	1	Fetch Instrument Parameters: For each FX pair, retrieve pip size (e.g., 0.0001 for EUR/USD, 0.01 for USD/JPY) and pip value (USD worth of 1 pip per 100,000 units; e.g., $10 for EUR/USD, dynamic for others: ( \text{Pip Value} = \frac{100,000 \times \text{Pip Size}}{\text{Exchange Rate}} )).
+	2	Convert OHLC to Pips: [ \text{OHLC_pips} = \frac{\text{OHLC}}{\text{Pip Size}} ]
+	3	Convert Pips to USD: [ \text{OHLC_usd} = \text{OHLC_pips} \times \text{Pip Value} ]
+	4	Compute Raw ATR in USD (14-period default):
+	◦	True Range (TR): ( \max[(H_{\text{usd}} - L_{\text{usd}}), |H_{\text{usd}} - C_{\text{usd, prev}}|, |L_{\text{usd}} - C_{\text{usd, prev}}|] ).
+	◦	ATR: EMA of TR over 14 bars.
+Edge Cases
+	•	Initial Bars: Use simple average for first 14 bars until EMA stabilizes.
+	•	Zero Values: Add epsilon (1e-10) to avoid division errors.
+2. Percentile Scaling for ATR and ADX
+Apply 100-bin percentile ranking to both (no dollar scaling for ADX). This maps values to [0,1] based on historical rank, adapting to unknown future scales.
+Order of Operations (Common for ATR and ADX)
+	1	Prepare Raw Indicator: Compute raw ATR (dollar-normalized) or ADX (standard, no dollar scaling).
+	2	Rolling Window Setup: Use a 200-bar rolling window to compute percentiles (adjustable; e.g., 100 for shorter timeframes).
+	3	Compute Percentile Rank: [ \text{Percentile Rank} = \frac{\text{Number of values} < \text{Value}}{\text{Total number of values in window}} \times 100 ]
+	◦	Scale to [0,1]: ( \text{Value}_{\text{scaled}} = \frac{\text{Percentile Rank}}{100} ).
+	4	Cap Outliers: ( \text{Value}{\text{scaled}} = \min(1.0, \text{Value}{\text{scaled}}) ) (using 99th percentile as threshold).
+	5	Output: Add as new columns (e.g., atr_scaled, adx_scaled).
+Specifics for ATR
+	•	Use dollar-normalized ATR as input.
+	•	Example: If ATR = $100 in a window where 75% of values are below $100, scaled = 0.75.
+Specifics for ADX
+	•	Use raw ADX (0-100).
+	•	Example: If ADX = 30 in a window where 60% of values are below 30, scaled = 0.60.
+Edge Cases
+	•	Initial Bars: Fill with NaN or use expanding window until full (e.g., 200 bars).
+	•	Ties: Use average rank for tied values.
+	•	Outliers: Capping at 99th percentile prevents extreme volatility from skewing.
+	•	Negatives: Not applicable, as ATR/ADX are positive.
+Implementation Guidelines
+	•	Language/Tools: Python with pandas/numpy for rolling operations; TA-Lib for ATR/ADX.
+	•	Code Structure:
+	◦	Function: scale_indicators(df, pair_params, window=200) where df has OHLC, pair_params includes pip size/value.
+	◦	Output: DataFrame with scaled columns.
+	•	Testing:
+	◦	Unit Tests: Verify scaling on synthetic data (e.g., ATR spikes).
+	◦	Integration Tests: Check comparability (e.g., correlation of scaled ATR across pairs >0.8).
+	◦	Backtesting: Evaluate ML model performance with scaled features vs. raw.
+	•	Optimization: Vectorize operations; use parallel processing for 20 pairs.
+This completes the specifications. Contact for clarifications!
