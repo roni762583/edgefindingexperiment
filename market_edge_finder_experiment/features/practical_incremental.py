@@ -46,6 +46,13 @@ class PracticalInstrumentState:
     
     # Price change history for percentile scaling
     price_change_history: List[float] = field(default_factory=list)
+    
+    # Target calculation (next hour pip movement in USD)
+    next_hour_targets: List[float] = field(default_factory=list)
+    
+    # CSI (Commodity Selection Index) components
+    csi_history: List[float] = field(default_factory=list)
+    current_csi: float = np.nan
 
 class PracticalIncrementalCalculator:
     """
@@ -224,6 +231,37 @@ class PracticalIncrementalCalculator:
         
         return adx
     
+    def calculate_next_hour_target(self, current_ohlc: Dict[str, float], next_ohlc: Dict[str, float], 
+                                 instrument: str) -> float:
+        """
+        Calculate dollar-scaled pip movement for next hour (target for ML prediction)
+        
+        Args:
+            current_ohlc: Current bar OHLC
+            next_ohlc: Next bar OHLC (future data, for training only)
+            instrument: FX pair name
+            
+        Returns:
+            float: Dollar value of pip movement to next hour
+        """
+        from configs.instruments import get_pip_size, calculate_pip_value_usd
+        
+        current_close = current_ohlc['close']
+        next_close = next_ohlc['close']
+        
+        # Calculate price change in native currency units
+        price_diff = next_close - current_close
+        
+        # Convert to pips
+        pip_size = get_pip_size(instrument)
+        pip_movement = price_diff / pip_size
+        
+        # Convert pips to USD value using current rate
+        pip_value_usd = calculate_pip_value_usd(instrument, current_close)
+        dollar_target = pip_movement * pip_value_usd
+        
+        return dollar_target
+    
     def calculate_percentile_scaling(self, current_value: float, history: List[float], window: int = 200) -> float:
         """Percentile scaling [0,1]"""
         if np.isnan(current_value) or current_value <= 0:
@@ -283,6 +321,50 @@ class PracticalIncrementalCalculator:
                 asi_value = state.asi_history[-1] if state.asi_history else 0.0
         
         return asi_value
+    
+    def calculate_csi_incremental(self, new_ohlc: Dict[str, float], state: PracticalInstrumentState, 
+                                instrument: str) -> float:
+        """
+        Calculate CSI (Commodity Selection Index) incrementally using Wilder's formula.
+        
+        Original Wilder CSI Formula: CSI = ADX × ATR × (Volume / 1000)
+        
+        For FX markets without volume data, we use price velocity as volume proxy:
+        CSI = ADX × ATR_USD × (Price_Velocity / 100)
+        
+        Where Price_Velocity = |Close - Open| * 1000 (normalized price movement)
+        
+        This provides Wilder's market selection tool for ranking instrument activity.
+        NOTE: CSI is for reference only and SHALL NOT be used in the edge finding system.
+        
+        Args:
+            new_ohlc: Current bar OHLC
+            state: Instrument state with ADX and ATR history
+            instrument: FX pair name
+            
+        Returns:
+            float: CSI value for market selection ranking (reference only)
+        """
+        # Need both ADX and ATR for CSI calculation
+        if len(state.adx_history) == 0 or len(state.atr_history) == 0:
+            return np.nan
+        
+        # Get current ADX and ATR values
+        current_adx = state.adx_history[-1]
+        current_atr_usd = state.atr_history[-1]
+        
+        if np.isnan(current_adx) or np.isnan(current_atr_usd) or current_adx <= 0 or current_atr_usd <= 0:
+            return np.nan
+        
+        # Calculate price velocity as volume proxy (Wilder CSI adaptation for FX)
+        price_velocity = abs(new_ohlc['close'] - new_ohlc['open']) * 1000
+        volume_proxy = price_velocity / 100  # Scale to approximate volume/1000 factor
+        
+        # Apply Wilder's CSI formula with volume proxy
+        # CSI = ADX × ATR × (Volume_Proxy / scaling_factor)
+        csi_value = current_adx * current_atr_usd * volume_proxy
+        
+        return csi_value
 
 @dataclass
 class PracticalMultiInstrumentState:
@@ -300,7 +382,8 @@ class PracticalMultiInstrumentState:
 def update_practical_indicators(
     new_ohlc: Dict[str, float],
     multi_state: PracticalMultiInstrumentState,
-    instrument: str
+    instrument: str,
+    next_ohlc: Dict[str, float] = None
 ) -> Tuple[Dict[str, float], PracticalMultiInstrumentState]:
     """
     Practical incremental update using simple swing detection
@@ -360,10 +443,24 @@ def update_practical_indicators(
     slope_high = state.current_hsp_slope
     slope_low = state.current_lsp_slope
     
+    # 7. Calculate CSI (Commodity Selection Index) for market selection
+    csi_value = calculator.calculate_csi_incremental(new_ohlc, state, instrument)
+    if not np.isnan(csi_value):
+        state.csi_history.append(csi_value)
+        state.current_csi = csi_value
+    
+    # 8. Calculate target (next hour dollar-scaled pip movement) if future data available
+    target_next_hour = np.nan
+    if next_ohlc is not None:
+        target_next_hour = calculator.calculate_next_hour_target(new_ohlc, next_ohlc, instrument)
+        state.next_hour_targets.append(target_next_hour)
+    
     return {
         'slope_high': slope_high,
         'slope_low': slope_low,
         'volatility': volatility,
         'direction': direction,
-        'price_change': price_change_scaled  # Now percentile scaled [0,1]
+        'price_change': price_change_scaled,  # Feature: current bar price change [0,1]
+        'csi': state.current_csi,            # CSI: market selection index (ADX * ATR_USD)
+        'target_next_hour': target_next_hour   # Target: next hour pip movement in USD
     }, multi_state

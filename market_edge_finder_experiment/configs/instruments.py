@@ -6,20 +6,21 @@ FX Instruments Configuration for Edge Finding Experiment
 
 from typing import List, Dict
 
-# 20 FX pairs for edge discovery system
+# 24 FX pairs for edge discovery system - includes original 20 plus 4 additional pairs
 FX_INSTRUMENTS: List[str] = [
     'EUR_USD', 'GBP_USD', 'USD_JPY', 'USD_CHF', 'AUD_USD', 'USD_CAD', 'NZD_USD',
     'EUR_GBP', 'EUR_JPY', 'EUR_CHF', 'EUR_AUD', 'EUR_CAD', 'EUR_NZD',
     'GBP_JPY', 'GBP_CHF', 'GBP_AUD', 'GBP_CAD', 'GBP_NZD',
-    'AUD_JPY', 'CAD_JPY'
+    'AUD_JPY', 'CAD_JPY', 'AUD_CHF', 'AUD_NZD', 'CHF_JPY', 'NZD_JPY'
 ]
 
-# Instrument groups for context tensor organization
+# Instrument groups for context tensor organization  
 CURRENCY_GROUPS: Dict[str, List[str]] = {
     'USD_MAJORS': ['EUR_USD', 'GBP_USD', 'USD_JPY', 'USD_CHF', 'AUD_USD', 'USD_CAD', 'NZD_USD'],
     'EUR_CROSSES': ['EUR_GBP', 'EUR_JPY', 'EUR_CHF', 'EUR_AUD', 'EUR_CAD', 'EUR_NZD'],
     'GBP_CROSSES': ['GBP_JPY', 'GBP_CHF', 'GBP_AUD', 'GBP_CAD', 'GBP_NZD'],
-    'JPY_CROSSES': ['AUD_JPY', 'CAD_JPY']
+    'JPY_CROSSES': ['AUD_JPY', 'CAD_JPY', 'CHF_JPY', 'NZD_JPY'],
+    'OTHER_CROSSES': ['AUD_CHF', 'AUD_NZD']
 }
 
 # Market session times (UTC) for regime detection
@@ -36,7 +37,8 @@ TYPICAL_SPREADS: Dict[str, float] = {
     'AUD_USD': 0.2, 'USD_CAD': 0.2, 'NZD_USD': 0.3,
     'EUR_GBP': 0.2, 'EUR_JPY': 0.2, 'EUR_CHF': 0.3, 'EUR_AUD': 0.3,
     'EUR_CAD': 0.3, 'EUR_NZD': 0.4, 'GBP_JPY': 0.3, 'GBP_CHF': 0.4,
-    'GBP_AUD': 0.4, 'GBP_CAD': 0.4, 'GBP_NZD': 0.5, 'AUD_JPY': 0.3, 'CAD_JPY': 0.3
+    'GBP_AUD': 0.4, 'GBP_CAD': 0.4, 'GBP_NZD': 0.5, 'AUD_JPY': 0.3, 'CAD_JPY': 0.3,
+    'AUD_CHF': 0.4, 'AUD_NZD': 0.4, 'CHF_JPY': 0.3, 'NZD_JPY': 0.4
 }
 
 def get_pip_size(instrument: str) -> float:

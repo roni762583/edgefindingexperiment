@@ -2,7 +2,8 @@
 """
 Official OANDA v20 Data Download Script
 
-Downloads 3 years of hourly data for 20 major FX pairs using the official OANDA v20 API.
+Downloads 3 years of hourly data for 24 FX pairs using the official OANDA v20 API.
+Includes the original 20 instruments plus 4 additional pairs for complete coverage.
 Follows OANDA v20 documentation exactly - no shortcuts.
 """
 
@@ -198,12 +199,14 @@ def main():
         print(f"❌ Account test failed: {e}")
         return False
     
-    # 20 major FX pairs (as specified in CLAUDE.md)
+    # 24 FX pairs - original 20 plus 4 missing instruments
     instruments = [
         "EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD",
         "USD_CAD", "NZD_USD", "EUR_GBP", "EUR_JPY", "GBP_JPY", 
         "AUD_JPY", "EUR_CHF", "GBP_CHF", "CHF_JPY", "EUR_AUD",
-        "GBP_AUD", "AUD_CHF", "NZD_JPY", "CAD_JPY", "AUD_NZD"
+        "GBP_AUD", "AUD_CHF", "NZD_JPY", "CAD_JPY", "AUD_NZD",
+        # 4 missing instruments added
+        "EUR_CAD", "EUR_NZD", "GBP_CAD", "GBP_NZD"
     ]
     
     # Create data directory
