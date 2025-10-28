@@ -2,26 +2,26 @@
 
 ## Project Overview
 
-Production-grade hybrid ML system combining Temporal Convolutional Autoencoder (TCNAE) with LightGBM for 1-hour FX return prediction across 20 currency pairs with cross-instrument context awareness.
+Production-grade hybrid ML system combining Temporal Convolutional Autoencoder (TCNAE) with LightGBM for 1-hour FX return prediction across 24 currency pairs with cross-instrument context awareness.
 
 ## Architecture Components
 
 ### 1. Data Pipeline
-- **Historical Data Collection**: OANDA v20 API integration for 20 FX pairs
+- **Historical Data Collection**: OANDA v20 API integration for 24 FX pairs
 - **Real-time Data Stream**: Live M1 candle updates for feature computation
 - **Data Storage**: Efficient storage with DuckDB/Parquet for large datasets
 - **Data Validation**: Comprehensive quality checks and anomaly detection
 
 ### 2. Feature Engineering Pipeline
 - **Causal Features**: 5 indicators per instrument (slope_high, slope_low, volatility, direction, price_change)
-- **Cross-Instrument Context**: 20-instrument feature matrix for context tensor
+- **Cross-Instrument Context**: 24-instrument feature matrix for context tensor
 - **Market Regime Detection**: 16-state framework (4 volatility × 4 direction states)
 - **Temporal Windows**: 4-hour sequences (240 M1 candles) for TCNAE input
 - **Incremental Updates**: Single function for live and historical processing consistency
 
 ### 3. Model Architecture
-- **TCNAE (Stage 1)**: 4-hour sequence → 100-dim latent representation
-- **LightGBM (Stage 2)**: Latent features → 20 instrument predictions
+- **TCNAE (Stage 1)**: 4-hour sequence → 120-dim latent representation  
+- **LightGBM (Stage 2)**: Latent features → 24 instrument predictions
 - **Context Tensor**: Cross-instrument information sharing mechanism
 - **Adaptive Teacher Forcing**: Dynamic blend of true vs predicted context
 
@@ -44,7 +44,7 @@ Production-grade hybrid ML system combining Temporal Convolutional Autoencoder (
 
 #### Data Infrastructure
 - [ ] **Historical Data Download System**
-  - Parallel downloading for 20 FX pairs
+  - Parallel downloading for 24 FX pairs
   - Data validation and quality checks
   - Efficient storage format (Parquet/DuckDB)
   - Error handling and retry mechanisms
@@ -114,7 +114,7 @@ Production-grade hybrid ML system combining Temporal Convolutional Autoencoder (
   - Regime persistence analysis
 
 #### Feature Pipeline
-- [ ] **Parallel Processing**: Multiprocessing for 20 instruments
+- [ ] **Parallel Processing**: Multiprocessing for 24 instruments
 - [ ] **Memory Management**: Efficient computation for large datasets
 - [ ] **Feature Validation**: Statistical tests for feature quality
 - [ ] **Feature Storage**: Optimized storage and retrieval
@@ -127,7 +127,7 @@ Production-grade hybrid ML system combining Temporal Convolutional Autoencoder (
   - 1D convolutional layers for temporal processing
   - Residual connections for gradient flow
   - Adaptive pooling for sequence compression
-  - 240 M1 candles → 100-dim latent space
+  - 240 M1 candles → 120-dim latent space
 
 - [ ] **Decoder Design**
   - Transposed convolutions for reconstruction
@@ -168,7 +168,7 @@ Production-grade hybrid ML system combining Temporal Convolutional Autoencoder (
 **Objective**: Implement cross-instrument information sharing
 
 #### Context Tensor Design
-- [ ] **Architecture**: 20×20 instrument correlation matrix
+- [ ] **Architecture**: 24×24 instrument correlation matrix
 - [ ] **Update Mechanism**: Real-time context computation
 - [ ] **Memory Management**: Efficient tensor operations
 - [ ] **Sparsity Handling**: Reduced computation for weak correlations
@@ -260,11 +260,11 @@ class InstrumentState:
 
 @dataclass
 class MultiInstrumentState:
-    """Combined state management for all 20 FX instruments"""
+    """Combined state management for all 24 FX instruments"""
     instruments: Dict[str, InstrumentState] # Per-instrument states
     
     # Cross-instrument context tensor
-    context_matrix: np.ndarray              # 20×5 feature matrix
+    context_matrix: np.ndarray              # 24×5 feature matrix
     context_timestamp: pd.Timestamp        # Last update time
     
     # Global market regime state
@@ -273,7 +273,7 @@ class MultiInstrumentState:
 ```
 
 **Advantages of Combined State**:
-1. **Single File Persistence**: One state file for all 20 instruments vs 20 separate files
+1. **Single File Persistence**: One state file for all 24 instruments vs 24 separate files
 2. **Context Tensor Integration**: Natural fit with cross-instrument feature matrix
 3. **Global Market Regime**: Shared regime state across all instruments
 4. **Efficient I/O**: Single read/write operation for entire system state
@@ -384,7 +384,7 @@ def on_new_candle(instrument: str, ohlc: Dict):
     indicators, updated_state = update_indicators(ohlc, global_state, instrument)
     
     # Context tensor automatically updated within combined state
-    # Generate predictions using full 20-instrument context
+    # Generate predictions using full 24-instrument context
     predictions = model.predict(updated_state.context_matrix)
     
     # Persist updated state
@@ -401,7 +401,7 @@ def on_new_candle(instrument: str, ohlc: Dict):
 - **Security**: No hardcoded secrets, input validation
 
 ### Performance Requirements
-- **Data Processing**: Handle 3+ years of M1 data for 20 instruments
+- **Data Processing**: Handle 3+ years of M1 data for 24 instruments
 - **Feature Computation**: <10 seconds for 240-candle sequence
 - **Model Training**: <24 hours for full TCNAE+LightGBM training
 - **Inference**: <100ms latency for live predictions
@@ -465,7 +465,7 @@ def on_new_candle(instrument: str, ohlc: Dict):
 - **Test Coverage**: >90%
 
 ### Operational Metrics
-- **Data Availability**: >99.5% for all 20 instruments
+- **Data Availability**: >99.5% for all 24 instruments
 - **Model Performance**: Consistent across market regimes
 - **Code Quality**: All quality gates passing
 - **Documentation**: Complete operational runbook
