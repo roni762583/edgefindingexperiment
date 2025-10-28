@@ -521,7 +521,7 @@ class IncrementalIndicatorCalculator:
         state: InstrumentState
     ) -> Tuple[bool, bool]:
         """
-        Proper Wilder ASI swing detection with two-step process:
+        TRUE Wilder ASI swing detection following original 1978 specification exactly:
         1. Candidate Detection: Local high/low in ASI (3-bar pattern)  
         2. Breakout Confirmation: Only confirmed after breaking opposite significant point
         
@@ -532,87 +532,41 @@ class IncrementalIndicatorCalculator:
         # Add current ASI to history for candidate detection
         state.asi_history.append(asi_value)
         
-        # Step 1: CANDIDATE DETECTION (3-bar pattern)
-        detected_candidate = False
-        
+        # Step 1: CANDIDATE DETECTION (3-bar pattern like Wilder p.96)
+        # Need at least 3 bars for pattern detection
         if len(state.asi_history) >= 3:
+            # Check if we can form a complete 3-bar pattern
             left_asi = state.asi_history[-3]
             middle_asi = state.asi_history[-2] 
             right_asi = state.asi_history[-1]  # Current bar
             
             # Skip NaN values
             if not (np.isnan(left_asi) or np.isnan(middle_asi) or np.isnan(right_asi)):
-                # FIXED: Match batch method exactly - middle bar is at current_idx - 2
-                # In batch: when processing bar i, middle is at i-1
-                # In incremental: when processing bar current_idx, middle should be at current_idx - 2
-                middle_dataset_idx = current_idx - 2  # Middle bar index in dataset
+                middle_dataset_idx = current_idx - 2  # Middle bar is 2 bars back from current
                 
                 # HSP Candidate: middle bar higher than both neighbors
                 if middle_asi > left_asi and middle_asi > right_asi:
-                    # Store as pending HSP candidate (needs breakout confirmation)
+                    # Store candidate - update to most recent pattern (Wilder's approach)
                     state.pending_hsp_index = middle_dataset_idx
                     state.pending_hsp_asi = middle_asi
-                    state.pending_hsp_price = high_price  # HIP (High Price)
-                    detected_candidate = True
+                    state.pending_hsp_price = high_price  # Use high from middle bar
                 
                 # LSP Candidate: middle bar lower than both neighbors  
                 if middle_asi < left_asi and middle_asi < right_asi:
-                    # Store as pending LSP candidate (needs breakout confirmation)
+                    # Store candidate - update to most recent pattern (Wilder's approach)
                     state.pending_lsp_index = middle_dataset_idx
                     state.pending_lsp_asi = middle_asi
-                    state.pending_lsp_price = low_price  # LOP (Low Price)
-                    detected_candidate = True
+                    state.pending_lsp_price = low_price  # Use low from middle bar
         
-        # Step 2: BREAKOUT CONFIRMATION
+        # Step 2: BREAKOUT CONFIRMATION (Wilder's core rule p.98-100)
         confirmed_hsp = False
         confirmed_lsp = False
         
-        # Confirm pending HSP: ASI must drop BELOW last significant LSP
-        if (state.pending_hsp_index is not None and 
-            state.last_sig_lsp_asi is not None and
-            asi_value < state.last_sig_lsp_asi):
-            
-            # Confirm the pending HSP as significant
-            state.last_sig_hsp_index = state.pending_hsp_index
-            state.last_sig_hsp_asi = state.pending_hsp_asi
-            state.last_sig_hsp_price = state.pending_hsp_price
-            
-            # Add to legacy tracking for slope calculation compatibility
-            state.hsp_indices.append(state.pending_hsp_index)
-            state.hsp_values.append(state.pending_hsp_asi)
-            
-            # Clear pending state
-            state.pending_hsp_index = None
-            state.pending_hsp_asi = None
-            state.pending_hsp_price = None
-            
-            confirmed_hsp = True
-        
-        # Confirm pending LSP: ASI must rise ABOVE last significant HSP
-        if (state.pending_lsp_index is not None and
-            state.last_sig_hsp_asi is not None and
-            asi_value > state.last_sig_hsp_asi):
-            
-            # Confirm the pending LSP as significant
-            state.last_sig_lsp_index = state.pending_lsp_index
-            state.last_sig_lsp_asi = state.pending_lsp_asi
-            state.last_sig_lsp_price = state.pending_lsp_price
-            
-            # Add to legacy tracking for slope calculation compatibility
-            state.lsp_indices.append(state.pending_lsp_index)
-            state.lsp_values.append(state.pending_lsp_asi)
-            
-            # Clear pending state
-            state.pending_lsp_index = None
-            state.pending_lsp_asi = None
-            state.pending_lsp_price = None
-            
-            confirmed_lsp = True
-        
-        # Special case: First swing point (no prior significant point to break)
-        if (state.last_sig_hsp_asi is None and state.last_sig_lsp_asi is None):
-            # Allow first candidate to be confirmed immediately
+        # FIRST SWING POINT: No prior significant points exist
+        if state.last_sig_hsp_asi is None and state.last_sig_lsp_asi is None:
+            # Accept first candidate that appears (either HSP or LSP)
             if state.pending_hsp_index is not None:
+                # Confirm first HSP immediately
                 state.last_sig_hsp_index = state.pending_hsp_index
                 state.last_sig_hsp_asi = state.pending_hsp_asi
                 state.last_sig_hsp_price = state.pending_hsp_price
@@ -624,6 +578,47 @@ class IncrementalIndicatorCalculator:
                 confirmed_hsp = True
                 
             elif state.pending_lsp_index is not None:
+                # Confirm first LSP immediately
+                state.last_sig_lsp_index = state.pending_lsp_index
+                state.last_sig_lsp_asi = state.pending_lsp_asi
+                state.last_sig_lsp_price = state.pending_lsp_price
+                state.lsp_indices.append(state.pending_lsp_index)
+                state.lsp_values.append(state.pending_lsp_asi)
+                state.pending_lsp_index = None
+                state.pending_lsp_asi = None
+                state.pending_lsp_price = None
+                confirmed_lsp = True
+        
+        else:
+            # NORMAL CASE: Wilder's alternating breakout confirmation with STRICT ALTERNATION
+            
+            # Determine what type of swing can be confirmed (enforce alternation)
+            last_confirmed_was_hsp = (state.last_sig_hsp_index is not None and 
+                                     (state.last_sig_lsp_index is None or 
+                                      state.last_sig_hsp_index > state.last_sig_lsp_index))
+            
+            # Confirm pending HSP: Only if last confirmed was LSP, and ASI drops below last LSP
+            if (state.pending_hsp_index is not None and 
+                state.last_sig_lsp_asi is not None and
+                asi_value < state.last_sig_lsp_asi and
+                not last_confirmed_was_hsp):  # ALTERNATION ENFORCEMENT
+                
+                state.last_sig_hsp_index = state.pending_hsp_index
+                state.last_sig_hsp_asi = state.pending_hsp_asi
+                state.last_sig_hsp_price = state.pending_hsp_price
+                state.hsp_indices.append(state.pending_hsp_index)
+                state.hsp_values.append(state.pending_hsp_asi)
+                state.pending_hsp_index = None
+                state.pending_hsp_asi = None
+                state.pending_hsp_price = None
+                confirmed_hsp = True
+            
+            # Confirm pending LSP: Only if last confirmed was HSP, and ASI rises above last HSP
+            elif (state.pending_lsp_index is not None and
+                  state.last_sig_hsp_asi is not None and
+                  asi_value > state.last_sig_hsp_asi and
+                  last_confirmed_was_hsp):  # ALTERNATION ENFORCEMENT
+                
                 state.last_sig_lsp_index = state.pending_lsp_index
                 state.last_sig_lsp_asi = state.pending_lsp_asi
                 state.last_sig_lsp_price = state.pending_lsp_price

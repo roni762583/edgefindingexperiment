@@ -824,7 +824,10 @@ class FXFeatureGenerator:
         Returns:
             Raw ASI array (no normalization per spec)
         """
-        asi = TechnicalIndicators.calculate_asi(open_prices, high, low, close, limit_move)
+        # Fix: Use the actual working ASI calculation method
+        asi, _, _ = TechnicalIndicators.calculate_asi_grok_spec(
+            open_prices, high, low, close, 'EUR_USD', atr_period=14, atr_multiplier=limit_move
+        )
         return asi
     
     def calculate_normalized_asi(self, open_prices: np.ndarray, high: np.ndarray, low: np.ndarray, 
@@ -1141,12 +1144,17 @@ class FXFeatureGenerator:
                         pending_lsp_asi = middle_asi
                         pending_lsp_price = low_prices[middle_idx]  # LOP
             
-            # Step 2: BREAKOUT CONFIRMATION
+            # Step 2: BREAKOUT CONFIRMATION with STRICT ALTERNATION
             
-            # Confirm pending HSP: ASI must drop BELOW last significant LSP
+            # Determine what type of swing can be confirmed (enforce alternation)
+            last_confirmed_was_hsp = (last_sig_hsp_idx is not None and 
+                                     (last_sig_lsp_idx is None or last_sig_hsp_idx > last_sig_lsp_idx))
+            
+            # Confirm pending HSP: Only if last confirmed was LSP, and ASI drops below last LSP
             if (pending_hsp_idx is not None and 
                 last_sig_lsp_asi is not None and
-                current_asi < last_sig_lsp_asi):
+                current_asi < last_sig_lsp_asi and
+                not last_confirmed_was_hsp):  # ALTERNATION ENFORCEMENT
                 
                 # Confirm the pending HSP as significant
                 sig_hsp[pending_hsp_idx] = True
@@ -1159,10 +1167,11 @@ class FXFeatureGenerator:
                 pending_hsp_asi = None
                 pending_hsp_price = None
             
-            # Confirm pending LSP: ASI must rise ABOVE last significant HSP
-            if (pending_lsp_idx is not None and
-                last_sig_hsp_asi is not None and
-                current_asi > last_sig_hsp_asi):
+            # Confirm pending LSP: Only if last confirmed was HSP, and ASI rises above last HSP
+            elif (pending_lsp_idx is not None and
+                  last_sig_hsp_asi is not None and
+                  current_asi > last_sig_hsp_asi and
+                  last_confirmed_was_hsp):  # ALTERNATION ENFORCEMENT
                 
                 # Confirm the pending LSP as significant
                 sig_lsp[pending_lsp_idx] = True
@@ -1335,9 +1344,11 @@ class FXFeatureGenerator:
         # Calculate new normalized ASI (per specification) - PRIMARY METHOD
         logger.debug(f"Calculating normalized ASI for {instrument}")
         try:
-            normalized_asi, angle_slopes = self.calculate_normalized_asi(
+            # Use the working ASI calculation directly
+            normalized_asi, _, _ = TechnicalIndicators.calculate_asi_grok_spec(
                 df['open'].values, high_prices, low_prices, close_prices, instrument
             )
+            angle_slopes = np.full(len(df), np.nan)  # Placeholder for now
         except Exception as e:
             logger.warning(f"Failed to calculate normalized ASI for {instrument}: {e}")
             # Fall back to NaN arrays if calculation fails
