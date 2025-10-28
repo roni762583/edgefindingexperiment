@@ -164,10 +164,41 @@ def download_instrument_data(api, instrument, start_date, end_date):
     df = df[~df.index.duplicated(keep='first')]
     df = df[(df.index >= start_date) & (df.index <= end_date)]
     
+    # Reset index to make time a regular column for CSV output
+    df = df.reset_index()
+    
     return df
 
+def check_missing_instruments(instruments: list, data_dir: Path) -> list:
+    """Check which instruments are missing or incomplete and need downloading."""
+    missing_instruments = []
+    
+    print("🔍 CHECKING EXISTING DATA...")
+    
+    for instrument in instruments:
+        file_path = data_dir / f"{instrument}_3years_H1.csv"
+        
+        if not file_path.exists():
+            print(f"   ❌ {instrument}: File missing")
+            missing_instruments.append(instrument)
+        else:
+            # Check if file has reasonable amount of data (at least 4k bars for recent data)
+            try:
+                import pandas as pd
+                df = pd.read_csv(file_path)
+                if len(df) < 4000:  # About 6 months of hourly data
+                    print(f"   ⚠️  {instrument}: File too small ({len(df):,} bars)")
+                    missing_instruments.append(instrument)
+                else:
+                    print(f"   ✅ {instrument}: {len(df):,} bars (OK)")
+            except Exception as e:
+                print(f"   ❌ {instrument}: File corrupted ({e})")
+                missing_instruments.append(instrument)
+    
+    return missing_instruments
+
 def main():
-    """Main download function."""
+    """Main download function with smart checking."""
     print("🚀 OANDA v20 Live Data Download")
     print("=" * 50)
     
@@ -213,24 +244,34 @@ def main():
     data_dir = Path("data/raw")
     data_dir.mkdir(parents=True, exist_ok=True)
     
+    # Smart check: Only download missing instruments
+    missing_instruments = check_missing_instruments(instruments, data_dir)
+    
+    if not missing_instruments:
+        print(f"\n🎉 All {len(instruments)} instruments already downloaded!")
+        return True
+    
+    print(f"\n📊 Download Configuration:")
+    print(f"   Total instruments: {len(instruments)} FX pairs")
+    print(f"   Missing/incomplete: {len(missing_instruments)} pairs")
+    print(f"   To download: {missing_instruments}")
+    print(f"   Timeframe: 3 years (H1 granularity)")
+    
     # Date range: 3 years back (timezone-aware)
     from datetime import timezone
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=1095)  # 3 years
     
-    print(f"\n📊 Download Configuration:")
-    print(f"   Instruments: {len(instruments)} FX pairs")
-    print(f"   Timeframe: 3 years (H1 granularity)")
     print(f"   Date range: {start_date.date()} to {end_date.date()}")
     print(f"   Data directory: {data_dir}")
     print("\n🚀 Starting download...\n")
     
-    # Download data for each instrument
+    # Download data only for missing instruments
     successful_downloads = 0
     total_bars = 0
     
-    for i, instrument in enumerate(instruments, 1):
-        print(f"📈 [{i:2d}/{len(instruments)}] {instrument}...", end=" ")
+    for i, instrument in enumerate(missing_instruments, 1):
+        print(f"📈 [{i:2d}/{len(missing_instruments)}] {instrument}...", end=" ")
         
         # Download data
         df = download_instrument_data(api, instrument, start_date, end_date)
@@ -238,13 +279,15 @@ def main():
         if df is not None:
             # Save to CSV (human readable and debuggable)
             file_path = data_dir / f"{instrument}_3years_H1.csv"
-            df.to_csv(file_path)
+            df.to_csv(file_path, index=False)
             
             successful_downloads += 1
             total_bars += len(df)
             
             # Calculate coverage
-            days_span = (df.index[-1] - df.index[0]).days
+            # Since we reset_index, time is now a column, not index
+            df_time = pd.to_datetime(df['time'])
+            days_span = (df_time.iloc[-1] - df_time.iloc[0]).days
             expected_bars = days_span * 24  # 24 hours per day
             coverage = (len(df) / expected_bars * 100) if expected_bars > 0 else 0
             
@@ -257,9 +300,10 @@ def main():
     
     # Summary
     print(f"\n🎉 Download Complete!")
-    print(f"✅ Successfully downloaded: {successful_downloads}/{len(instruments)} instruments")
+    print(f"✅ Successfully downloaded: {successful_downloads}/{len(missing_instruments)} missing instruments")
     print(f"📊 Total bars collected: {total_bars:,}")
     print(f"💾 Data saved to: {data_dir}")
+    print(f"📈 Total instruments available: {len(instruments)} (complete dataset)")
     
     if successful_downloads > 0:
         avg_bars = total_bars // successful_downloads
