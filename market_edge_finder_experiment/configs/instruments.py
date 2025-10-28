@@ -41,6 +41,45 @@ TYPICAL_SPREADS: Dict[str, float] = {
     'AUD_CHF': 0.4, 'AUD_NZD': 0.4, 'CHF_JPY': 0.3, 'NZD_JPY': 0.4
 }
 
+# Wilder CSI Economic Factors for FX Markets
+# Margin requirements in USD for standard lot (100,000 units) - typical broker requirements
+CSI_MARGIN_REQUIREMENTS: Dict[str, float] = {
+    # USD Majors - lower margin due to high liquidity
+    'EUR_USD': 2000.0, 'GBP_USD': 2500.0, 'USD_JPY': 2000.0, 'USD_CHF': 2500.0,
+    'AUD_USD': 3000.0, 'USD_CAD': 2500.0, 'NZD_USD': 3500.0,
+    
+    # EUR Crosses - medium margin
+    'EUR_GBP': 3000.0, 'EUR_JPY': 2500.0, 'EUR_CHF': 3000.0, 'EUR_AUD': 3500.0,
+    'EUR_CAD': 3500.0, 'EUR_NZD': 4000.0,
+    
+    # GBP Crosses - higher margin due to volatility
+    'GBP_JPY': 3500.0, 'GBP_CHF': 4000.0, 'GBP_AUD': 4000.0, 
+    'GBP_CAD': 4000.0, 'GBP_NZD': 4500.0,
+    
+    # Other Crosses - highest margin
+    'AUD_JPY': 3500.0, 'CAD_JPY': 3500.0, 'AUD_CHF': 4000.0, 
+    'AUD_NZD': 4500.0, 'CHF_JPY': 3500.0, 'NZD_JPY': 4000.0
+}
+
+# Commission costs in USD per standard lot (round-turn)
+CSI_COMMISSION_COSTS: Dict[str, float] = {
+    # USD Majors - lowest commission
+    'EUR_USD': 15.0, 'GBP_USD': 18.0, 'USD_JPY': 15.0, 'USD_CHF': 18.0,
+    'AUD_USD': 20.0, 'USD_CAD': 18.0, 'NZD_USD': 25.0,
+    
+    # EUR Crosses - medium commission
+    'EUR_GBP': 25.0, 'EUR_JPY': 22.0, 'EUR_CHF': 25.0, 'EUR_AUD': 28.0,
+    'EUR_CAD': 30.0, 'EUR_NZD': 35.0,
+    
+    # GBP Crosses - higher commission
+    'GBP_JPY': 30.0, 'GBP_CHF': 35.0, 'GBP_AUD': 35.0, 
+    'GBP_CAD': 35.0, 'GBP_NZD': 40.0,
+    
+    # Other Crosses - highest commission
+    'AUD_JPY': 30.0, 'CAD_JPY': 30.0, 'AUD_CHF': 35.0, 
+    'AUD_NZD': 40.0, 'CHF_JPY': 30.0, 'NZD_JPY': 35.0
+}
+
 def get_pip_size(instrument: str) -> float:
     """
     Get pip size for instrument.
@@ -148,3 +187,46 @@ def get_instrument_priority() -> Dict[str, int]:
     for i, instrument in enumerate(FX_INSTRUMENTS):
         priority[instrument] = i + 1
     return priority
+
+def get_csi_margin_requirement(instrument: str) -> float:
+    """Get margin requirement in USD for Wilder CSI calculation (static fallback)"""
+    return CSI_MARGIN_REQUIREMENTS.get(instrument, 5000.0)  # Default $5000 for unknown instruments
+
+def get_csi_commission_cost(instrument: str) -> float:
+    """Get commission cost in USD for Wilder CSI calculation (static fallback)"""
+    return CSI_COMMISSION_COSTS.get(instrument, 50.0)  # Default $50 for unknown instruments
+
+def get_dynamic_csi_parameters(instrument: str, use_live_api: bool = None):
+    """
+    Get CSI parameters - either from live OANDA API or static config
+    
+    Args:
+        instrument: FX pair name
+        use_live_api: If True, fetch from OANDA API; if False, use static config;
+                     if None, use global CSI configuration
+        
+    Returns:
+        tuple: (margin_usd, commission_usd, usd_per_pip)
+    """
+    # Use global configuration if not specified
+    if use_live_api is None:
+        from configs.csi_config import is_dynamic_csi_enabled
+        use_live_api = is_dynamic_csi_enabled()
+    
+    if use_live_api:
+        try:
+            from data_pull.oanda_csi_fetcher import OandaCSIFetcher
+            fetcher = OandaCSIFetcher()
+            params = fetcher.fetch_csi_parameters(instrument)
+            return params.margin_usd, params.commission_usd, params.usd_per_pip
+        except Exception as e:
+            print(f"⚠️ OANDA API failed for {instrument}, using static config: {e}")
+            # Fall back to static configuration
+            pass
+    
+    # Static configuration fallback
+    margin_usd = get_csi_margin_requirement(instrument)
+    commission_usd = get_csi_commission_cost(instrument)
+    usd_per_pip = calculate_pip_value_usd(instrument, 1.0)  # Simplified
+    
+    return margin_usd, commission_usd, usd_per_pip

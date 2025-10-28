@@ -50,9 +50,10 @@ class PracticalInstrumentState:
     # Target calculation (next hour pip movement in USD)
     next_hour_targets: List[float] = field(default_factory=list)
     
-    # CSI (Commodity Selection Index) components
+    # CSI (Commodity Selection Index) components - Wilder's original formula
     csi_history: List[float] = field(default_factory=list)
     current_csi: float = np.nan
+    atr_raw_history: List[float] = field(default_factory=list)  # Raw ATR in price units for CSI
 
 class PracticalIncrementalCalculator:
     """
@@ -322,49 +323,100 @@ class PracticalIncrementalCalculator:
         
         return asi_value
     
-    def calculate_csi_incremental(self, new_ohlc: Dict[str, float], state: PracticalInstrumentState, 
-                                instrument: str) -> float:
+    def calculate_atr_raw_incremental(self, new_ohlc: Dict[str, float], state: PracticalInstrumentState) -> float:
+        """Calculate raw ATR (14-period) in price units for CSI calculation"""
+        if len(state.ohlc_history) < 2:
+            return 0.0
+        
+        # Get current and previous OHLC
+        curr = new_ohlc
+        prev = state.ohlc_history[-2]
+        
+        # Calculate True Range in raw price units (not USD)
+        tr1 = curr['high'] - curr['low']
+        tr2 = abs(curr['high'] - prev['close'])
+        tr3 = abs(curr['low'] - prev['close'])
+        true_range = max(tr1, tr2, tr3)
+        
+        # EMA smoothing (14-period) for ATR_14
+        period = 14
+        alpha = 2.0 / (period + 1)
+        
+        if len(state.atr_raw_history) == 0:
+            # First ATR value
+            atr_raw = true_range
+        else:
+            # EMA calculation
+            prev_atr = state.atr_raw_history[-1]
+            atr_raw = alpha * true_range + (1 - alpha) * prev_atr
+        
+        return atr_raw
+
+    def calculate_csi_wilder_original(self, new_ohlc: Dict[str, float], state: PracticalInstrumentState, 
+                                    instrument: str, current_rate: float, use_live_api: bool = None) -> float:
         """
-        Calculate CSI (Commodity Selection Index) incrementally using Wilder's formula.
+        Calculate CSI using Wilder's original formula from Section IX, pp. 109-113.
         
-        Original Wilder CSI Formula: CSI = ADX × ATR × (Volume / 1000)
+        Original Wilder CSI Formula:
+        CSI = ADXR × ATR_14 × [V / √M × 1/(150 + C)] × 100
         
-        For FX markets without volume data, we use price velocity as volume proxy:
-        CSI = ADX × ATR_USD × (Price_Velocity / 100)
+        Where:
+        - ADXR: Average Directional Movement Index Rating (14-period average of ADX)
+        - ATR_14: 14-day Average True Range in raw price units
+        - V: Value of a 1¢ move (pip value in USD)
+        - M: Margin requirement in USD
+        - C: Commission in USD
         
-        Where Price_Velocity = |Close - Open| * 1000 (normalized price movement)
-        
-        This provides Wilder's market selection tool for ranking instrument activity.
+        This is the authentic Wilder CSI for market selection.
         NOTE: CSI is for reference only and SHALL NOT be used in the edge finding system.
         
         Args:
             new_ohlc: Current bar OHLC
             state: Instrument state with ADX and ATR history
             instrument: FX pair name
+            current_rate: Current exchange rate for pip value calculation
             
         Returns:
-            float: CSI value for market selection ranking (reference only)
+            float: Wilder's authentic CSI value
         """
-        # Need both ADX and ATR for CSI calculation
-        if len(state.adx_history) == 0 or len(state.atr_history) == 0:
+        from configs.instruments import (get_csi_margin_requirement, get_csi_commission_cost, 
+                                       calculate_pip_value_usd)
+        
+        # Need sufficient ADX history for ADXR calculation (14 periods)
+        if len(state.adx_history) < 14 or len(state.atr_raw_history) == 0:
             return np.nan
         
-        # Get current ADX and ATR values
-        current_adx = state.adx_history[-1]
-        current_atr_usd = state.atr_history[-1]
+        # 1. Calculate ADXR (Average Directional Movement Index Rating)
+        # ADXR = 14-period average of ADX values
+        recent_adx = state.adx_history[-14:]
+        if any(np.isnan(adx) for adx in recent_adx):
+            return np.nan
+        adxr = np.mean(recent_adx)
         
-        if np.isnan(current_adx) or np.isnan(current_atr_usd) or current_adx <= 0 or current_atr_usd <= 0:
+        # 2. Get ATR_14 and convert to pips (following OANDA reference implementation)
+        atr_14_raw = state.atr_raw_history[-1]
+        if np.isnan(atr_14_raw) or atr_14_raw <= 0:
             return np.nan
         
-        # Calculate price velocity as volume proxy (Wilder CSI adaptation for FX)
-        price_velocity = abs(new_ohlc['close'] - new_ohlc['open']) * 1000
-        volume_proxy = price_velocity / 100  # Scale to approximate volume/1000 factor
+        # Convert ATR from price units to pips (critical for correct CSI scaling)
+        from configs.instruments import get_pip_size
+        pip_size = get_pip_size(instrument)
+        atr_14_pips = atr_14_raw / pip_size
         
-        # Apply Wilder's CSI formula with volume proxy
-        # CSI = ADX × ATR × (Volume_Proxy / scaling_factor)
-        csi_value = current_adx * current_atr_usd * volume_proxy
+        # 3. Economic Factors for FX Markets - Dynamic or Static based on configuration
+        from configs.instruments import get_dynamic_csi_parameters
+        M, C, V = get_dynamic_csi_parameters(instrument, use_live_api)
         
-        return csi_value
+        # 4. Apply Wilder's authentic CSI formula
+        # Economic factor with proper scaling
+        sqrt_M = np.sqrt(M)
+        commission_factor = 1.0 / (150.0 + C)  # Carry to 4 decimal places as specified
+        economic_factor = V / sqrt_M * commission_factor
+        
+        # Complete Wilder CSI formula using ATR in pips
+        csi = adxr * atr_14_pips * economic_factor * 100.0
+        
+        return csi
 
 @dataclass
 class PracticalMultiInstrumentState:
@@ -443,13 +495,19 @@ def update_practical_indicators(
     slope_high = state.current_hsp_slope
     slope_low = state.current_lsp_slope
     
-    # 7. Calculate CSI (Commodity Selection Index) for market selection
-    csi_value = calculator.calculate_csi_incremental(new_ohlc, state, instrument)
+    # 7. Calculate raw ATR for CSI calculation
+    atr_raw = calculator.calculate_atr_raw_incremental(new_ohlc, state)
+    if atr_raw > 0:
+        state.atr_raw_history.append(atr_raw)
+    
+    # 8. Calculate CSI using Wilder's original formula
+    current_rate = new_ohlc['close']  # Use current close for pip value calculation
+    csi_value = calculator.calculate_csi_wilder_original(new_ohlc, state, instrument, current_rate)
     if not np.isnan(csi_value):
         state.csi_history.append(csi_value)
         state.current_csi = csi_value
     
-    # 8. Calculate target (next hour dollar-scaled pip movement) if future data available
+    # 9. Calculate target (next hour dollar-scaled pip movement) if future data available
     target_next_hour = np.nan
     if next_ohlc is not None:
         target_next_hour = calculator.calculate_next_hour_target(new_ohlc, next_ohlc, instrument)

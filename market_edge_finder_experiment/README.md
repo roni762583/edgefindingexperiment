@@ -2,16 +2,19 @@
 
 Hybrid machine learning system for 1-hour FX return prediction using TCNAE + LightGBM across 20 currency pairs.
 
-## 🚀 Latest Updates - Complete 4-Indicator System
+## 🚀 Latest Updates - Complete 5-Indicator System + CSI Reference
 
-A comprehensive technical analysis system implementing all 4 planned indicators for edge discovery:
+A comprehensive technical analysis system implementing all 5 core indicators for edge discovery plus CSI for reference:
 
-### 🔧 4-Indicator System:
+### 🔧 5-Indicator Edge Finding System:
 1. **ASI (Accumulative Swing Index)**: Wilder's formula with USD normalization
 2. **HSP Angles**: High swing point regression slopes 
 3. **LSP Angles**: Low swing point regression slopes
 4. **Direction**: ADX-based directional strength indicator
 5. **Volatility**: ATR z-score normalized volatility measure
+
+### 📚 Reference Implementation (NOT used in edge finding):
+- **CSI (Commodity Selection Index)**: Wilder's original formula with dynamic OANDA API integration - for market ranking reference only
 
 ### ⚙️ Technical Specifications:
 - **USD Normalization**: OHLC converted to USD per 100k lot for cross-instrument comparison
@@ -19,6 +22,7 @@ A comprehensive technical analysis system implementing all 4 planned indicators 
 - **Linear Angle Mapping**: Regression slopes mapped from degrees to [-1, +1] range
 - **Direction Scaling**: tanh(ADX/25) for bounded [0, 1] directional strength
 - **Volatility Transform**: Normalized arctan for bounded [0, 1] volatility levels
+- **CSI (Reference Only)**: Wilder's authentic formula ADXR × ATR_pips × [V/√M × 1/(150+C)] × 100 with dynamic OANDA API integration for market ranking reference - NOT used in edge finding system
 
 ### 📊 Implementation Results (EUR_USD H1, 700 bars):
 - ✅ **ASI**: 700 valid values, range [-523, 282] USD per 100k lot
@@ -68,6 +72,9 @@ OANDA_API_KEY=your_api_key_here
 OANDA_ACCOUNT_ID=your_account_id_here
 OANDA_ENVIRONMENT=live
 IS_DEMO=false
+
+# Optional: Enable dynamic CSI parameter fetching (reference only)
+CSI_USE_DYNAMIC_API=false
 ```
 
 ## Architecture
@@ -154,6 +161,40 @@ python3 scripts/generate_features.py --help
 - **Flexible options** supporting multiple data sources
 - **Optional visualization** with integrated chart generation
 - **Consistent output format** across all processing modes
+
+## CSI Reference Implementation
+
+### ⚠️ Important: CSI is Reference Only
+
+The **Commodity Selection Index (CSI)** is implemented for **reference and market ranking purposes only**. It is **NOT used in the edge finding system** for predictions.
+
+### CSI Features:
+- **Wilder's Authentic Formula**: ADXR × ATR_pips × [V/√M × 1/(150+C)] × 100
+- **99.1% Validation Accuracy**: Against Wilder's original Soybeans example (351.1 vs expected 348)
+- **Dynamic OANDA API Integration**: Real-time margin requirements, pip values, commission costs
+- **Static Configuration Fallback**: Reliable operation when API unavailable
+
+### CSI Configuration Options:
+
+```bash
+# Enable dynamic OANDA API fetching (optional)
+export CSI_USE_DYNAMIC_API=true
+
+# Or configure programmatically
+from configs.csi_config import set_dynamic_csi
+set_dynamic_csi(True)
+
+# Test CSI calculation differences
+python3 scripts/compare_static_vs_dynamic_csi.py
+
+# Demo dynamic CSI functionality  
+python3 scripts/demo_dynamic_csi.py
+```
+
+**Static vs Dynamic Differences:**
+- Margins: 16-265% higher with live API (EUR_USD: $2,332 vs $2,000)
+- Commissions: 53-217% higher with real spreads (GBP_USD: $57 vs $18)
+- CSI Values: ~17% different with dynamic parameters
 
 ## Dependencies
 
