@@ -70,8 +70,8 @@ def create_practical_incremental_graph():
     lsp_count = len(state.lsp_indices)
     print(f"HSP: {hsp_count}, LSP: {lsp_count}, Total: {hsp_count + lsp_count}")
     
-    # Create the visualization - 4 panels
-    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(16, 20))
+    # Create the visualization - 3 panels
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(16, 16))
     
     x = np.arange(len(asi_values))
     
@@ -132,33 +132,38 @@ def create_practical_incremental_graph():
     ax2.legend(loc='upper left')
     ax2.grid(True, alpha=0.3)
     
-    # Bottom plot: Volatility, Direction, and Slope Angles
+    # Bottom plot: All 5 Indicators Combined
     incremental_df = pd.DataFrame(incremental_results)
     
     valid_vol = ~incremental_df['volatility'].isna()
     valid_dir = ~incremental_df['direction'].isna()
     valid_slope_high = ~incremental_df['slope_high'].isna()
     valid_slope_low = ~incremental_df['slope_low'].isna()
+    valid_price_change = ~incremental_df['price_change'].isna()
     
-    ax3_twin = ax3.twinx()
+    # Left axis: [0,1] scaled indicators
+    ax3.set_ylim(0, 1)
     
-    # Plot volatility (ATR scaled)
+    # Plot volatility (ATR scaled [0,1])
     if valid_vol.sum() > 0:
         ax3.plot(x[valid_vol], incremental_df['volatility'][valid_vol], 'g-', 
-                linewidth=1.5, alpha=0.8, label='Volatility (ATR scaled)')
-        ax3.set_ylabel('Volatility [0,1]', color='green')
-        ax3.tick_params(axis='y', labelcolor='green')
+                linewidth=1.5, alpha=0.8, label='Volatility [0,1]')
     
-    # Plot direction (ADX scaled)
+    # Plot direction (ADX scaled [0,1])
     if valid_dir.sum() > 0:
-        ax3_twin.plot(x[valid_dir], incremental_df['direction'][valid_dir], 'orange', 
-                     linewidth=1.5, alpha=0.8, label='Direction (ADX scaled)')
-        ax3_twin.set_ylabel('Direction [0,1]', color='orange')
-        ax3_twin.tick_params(axis='y', labelcolor='orange')
+        ax3.plot(x[valid_dir], incremental_df['direction'][valid_dir], 'orange', 
+                linewidth=1.5, alpha=0.8, label='Direction [0,1]')
     
-    # Plot raw slopes on secondary axis
+    # Plot price change (scaled [0,1])
+    if valid_price_change.sum() > 0:
+        ax3.plot(x[valid_price_change], incremental_df['price_change'][valid_price_change], 'purple', 
+                linewidth=1.5, alpha=0.8, label='Price Change [0,1]')
+    
+    ax3.set_ylabel('Scaled Indicators [0,1]', color='black')
+    ax3.axhline(y=0.5, color='black', linestyle='--', alpha=0.3, label='50th Percentile')
+    
+    # Right axis: Raw slopes
     ax3_slopes = ax3.twinx()
-    ax3_slopes.spines['right'].set_position(('outward', 60))
     
     if valid_slope_high.sum() > 0:
         ax3_slopes.plot(x[valid_slope_high], incremental_df['slope_high'][valid_slope_high], 'r-', 
@@ -170,6 +175,7 @@ def create_practical_incremental_graph():
     
     ax3_slopes.set_ylabel('Raw Slopes (ASI/bar)', color='red')
     ax3_slopes.tick_params(axis='y', labelcolor='red')
+    
     # Auto-scale for raw slope values
     if valid_slope_high.sum() > 0 or valid_slope_low.sum() > 0:
         all_slopes = []
@@ -183,47 +189,27 @@ def create_practical_incremental_graph():
             ax3_slopes.set_ylim(slope_min - 0.1*slope_range, slope_max + 0.1*slope_range)
     
     ax3.set_xlabel('Bar Index')
-    ax3.set_title('Incremental Practical Method - Volatility, Direction & Slope Indicators', fontsize=12)
+    ax3.set_title('All 5 Indicators: Volatility, Direction, Price Change [0,1] + High/Low Slopes (Raw)', fontsize=12)
     ax3.grid(True, alpha=0.3)
     
     # Add legends
-    if valid_vol.sum() > 0:
-        ax3.legend(loc='upper left')
-    if valid_dir.sum() > 0:
-        ax3_twin.legend(loc='upper center')
+    ax3.legend(loc='upper left')
     if valid_slope_high.sum() > 0 or valid_slope_low.sum() > 0:
         ax3_slopes.legend(loc='upper right')
-    
-    # Fourth plot: Log Close Feature (Price Change)
-    valid_price_change = ~incremental_df['price_change'].isna()
-    
-    if valid_price_change.sum() > 0:
-        ax4.plot(x[valid_price_change], incremental_df['price_change'][valid_price_change], 'purple', 
-                linewidth=1.5, alpha=0.8, label='Price Change (Scaled [0,1])')
-        ax4.axhline(y=0.5, color='black', linestyle='--', alpha=0.5, label='50th Percentile')
-        ax4.set_ylabel('Price Change [0,1]', color='purple')
-        ax4.tick_params(axis='y', labelcolor='purple')
-        ax4.set_ylim(0, 1)  # Fixed [0,1] range for percentile scaled data
-    
-    ax4.set_xlabel('Bar Index')
-    ax4.set_title('Price Change Feature (Percentile Scaled [0,1])', fontsize=12)
-    ax4.grid(True, alpha=0.3)
-    ax4.legend(loc='upper left')
     
     plt.tight_layout()
     
     # Save the graph
-    save_path = project_root / "data/test/incremental_practical_4panel_complete.png"
+    save_path = project_root / "data/test/incremental_practical_3panel_all5indicators.png"
     plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
     plt.show()
     
-    print(f"\n💾 4-panel complete incremental practical graph saved to: {save_path}")
+    print(f"\n💾 3-panel complete incremental practical graph saved to: {save_path}")
     print(f"📊 Summary:")
     print(f"  - Method: Incremental Practical (min_distance=3)")
     print(f"  - Panel 1: Close price trace")
     print(f"  - Panel 2: ASI dots with swing point connectors")
-    print(f"  - Panel 3: Volatility, direction, and slopes")
-    print(f"  - Panel 4: Log close feature (price change)")
+    print(f"  - Panel 3: All 5 indicators combined (volatility, direction, price_change [0,1] + slopes raw)")
     print(f"  - Total bars processed: 200")
     print(f"  - HSP detected: {len(state.hsp_indices)} (red triangles)")
     print(f"  - LSP detected: {len(state.lsp_indices)} (blue triangles)")

@@ -140,9 +140,13 @@ class PracticalIncrementalCalculator:
         tr3 = abs(curr['low'] - prev['close'])
         true_range = max(tr1, tr2, tr3)
         
-        # Convert to USD using pip values
-        from configs.instruments import get_pip_value
-        pip_size, pip_value_usd = get_pip_value(instrument)
+        # Convert to USD using dynamic pip values
+        from configs.instruments import get_pip_size, calculate_pip_value_usd
+        pip_size = get_pip_size(instrument)
+        
+        # Calculate dynamic pip value based on current rate
+        current_rate = curr['close']  # Use close price as current rate
+        pip_value_usd = calculate_pip_value_usd(instrument, current_rate)
         
         # Convert to pips then to USD
         tr_pips = true_range / pip_size
