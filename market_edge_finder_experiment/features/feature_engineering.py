@@ -1073,6 +1073,131 @@ class FXFeatureGenerator:
         
         return local_hsp, local_lsp, sig_hsp, sig_lsp
     
+    def _detect_swing_points_wilder_proper(self, asi_values: np.ndarray, high_prices: np.ndarray, low_prices: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Proper Wilder ASI swing detection with two-step process (batch version).
+        
+        Step 1: Candidate Detection - Local high/low in ASI (3-bar pattern)
+        Step 2: Breakout Confirmation - Only confirmed after breaking opposite significant point
+        
+        Reference: New Concepts in Technical Trading Systems (1978), pp. 96-102
+        
+        Args:
+            asi_values: ASI time series
+            high_prices: High prices for HIP tracking
+            low_prices: Low prices for LOP tracking
+            
+        Returns:
+            sig_hsp: Boolean array marking confirmed significant HSPs
+            sig_lsp: Boolean array marking confirmed significant LSPs
+        """
+        n = len(asi_values)
+        sig_hsp = np.full(n, False)
+        sig_lsp = np.full(n, False)
+        
+        # State tracking for Wilder method
+        last_sig_hsp_idx = None
+        last_sig_hsp_asi = None
+        last_sig_hsp_price = None  # HIP (High Price)
+        
+        last_sig_lsp_idx = None
+        last_sig_lsp_asi = None
+        last_sig_lsp_price = None  # LOP (Low Price)
+        
+        pending_hsp_idx = None
+        pending_hsp_asi = None
+        pending_hsp_price = None
+        
+        pending_lsp_idx = None
+        pending_lsp_asi = None
+        pending_lsp_price = None
+        
+        # Process each bar sequentially (like incremental)
+        for i in range(2, n):  # Start from bar 2 (need 3 bars for pattern)
+            current_asi = asi_values[i]
+            
+            # Step 1: CANDIDATE DETECTION (3-bar pattern)
+            # Check if the previous bar (i-1) was a local extreme using bars (i-2), (i-1), (i)
+            if i >= 2:
+                left_asi = asi_values[i-2]
+                middle_asi = asi_values[i-1]
+                right_asi = asi_values[i]
+                middle_idx = i-1
+                
+                # Skip NaN values
+                if not (np.isnan(left_asi) or np.isnan(middle_asi) or np.isnan(right_asi)):
+                    
+                    # HSP Candidate: middle bar higher than both neighbors
+                    if middle_asi > left_asi and middle_asi > right_asi:
+                        # Store as pending HSP candidate (needs breakout confirmation)
+                        pending_hsp_idx = middle_idx
+                        pending_hsp_asi = middle_asi
+                        pending_hsp_price = high_prices[middle_idx]  # HIP
+                    
+                    # LSP Candidate: middle bar lower than both neighbors
+                    if middle_asi < left_asi and middle_asi < right_asi:
+                        # Store as pending LSP candidate (needs breakout confirmation)
+                        pending_lsp_idx = middle_idx
+                        pending_lsp_asi = middle_asi
+                        pending_lsp_price = low_prices[middle_idx]  # LOP
+            
+            # Step 2: BREAKOUT CONFIRMATION
+            
+            # Confirm pending HSP: ASI must drop BELOW last significant LSP
+            if (pending_hsp_idx is not None and 
+                last_sig_lsp_asi is not None and
+                current_asi < last_sig_lsp_asi):
+                
+                # Confirm the pending HSP as significant
+                sig_hsp[pending_hsp_idx] = True
+                last_sig_hsp_idx = pending_hsp_idx
+                last_sig_hsp_asi = pending_hsp_asi
+                last_sig_hsp_price = pending_hsp_price
+                
+                # Clear pending state
+                pending_hsp_idx = None
+                pending_hsp_asi = None
+                pending_hsp_price = None
+            
+            # Confirm pending LSP: ASI must rise ABOVE last significant HSP
+            if (pending_lsp_idx is not None and
+                last_sig_hsp_asi is not None and
+                current_asi > last_sig_hsp_asi):
+                
+                # Confirm the pending LSP as significant
+                sig_lsp[pending_lsp_idx] = True
+                last_sig_lsp_idx = pending_lsp_idx
+                last_sig_lsp_asi = pending_lsp_asi
+                last_sig_lsp_price = pending_lsp_price
+                
+                # Clear pending state
+                pending_lsp_idx = None
+                pending_lsp_asi = None
+                pending_lsp_price = None
+            
+            # Special case: First swing point (no prior significant point to break)
+            if last_sig_hsp_asi is None and last_sig_lsp_asi is None:
+                # Allow first candidate to be confirmed immediately
+                if pending_hsp_idx is not None:
+                    sig_hsp[pending_hsp_idx] = True
+                    last_sig_hsp_idx = pending_hsp_idx
+                    last_sig_hsp_asi = pending_hsp_asi
+                    last_sig_hsp_price = pending_hsp_price
+                    pending_hsp_idx = None
+                    pending_hsp_asi = None
+                    pending_hsp_price = None
+                    
+                elif pending_lsp_idx is not None:
+                    sig_lsp[pending_lsp_idx] = True
+                    last_sig_lsp_idx = pending_lsp_idx
+                    last_sig_lsp_asi = pending_lsp_asi
+                    last_sig_lsp_price = pending_lsp_price
+                    pending_lsp_idx = None
+                    pending_lsp_asi = None
+                    pending_lsp_price = None
+        
+        return sig_hsp, sig_lsp
+    
     def _calculate_angle_slopes_between_last_two_hsp_lsp(self, values: np.ndarray, sig_hsp: np.ndarray, sig_lsp: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
         Calculate angle-normalized slopes for regression lines between:
@@ -1223,11 +1348,11 @@ class FXFeatureGenerator:
         # logger.debug(f"Calculating original ASI for {instrument}")
         # asi = self.calculate_asi(df['open'].values, high_prices, low_prices, close_prices)
         
-        # Apply swing point algorithm to normalized ASI (PRIMARY METHOD)
-        logger.debug(f"Calculating swing points for {instrument}")
+        # Apply swing point algorithm to normalized ASI (PRIMARY METHOD - WILDER PROPER)
+        logger.debug(f"Calculating swing points for {instrument} using proper Wilder method")
         
-        # Apply to normalized ASI  
-        local_hsp, local_lsp, sig_hsp, sig_lsp = self._detect_swing_points_with_alternating_constraint(normalized_asi)
+        # Apply proper Wilder method to normalized ASI with price data for HIP/LOP tracking
+        sig_hsp, sig_lsp = self._detect_swing_points_wilder_proper(normalized_asi, high_prices, low_prices)
         
         # Calculate angle slopes between last two HSPs and LSPs
         hsp_angles, lsp_angles = self._calculate_angle_slopes_between_last_two_hsp_lsp(normalized_asi, sig_hsp, sig_lsp)
@@ -1262,8 +1387,9 @@ class FXFeatureGenerator:
 
         # Add all 5 indicator columns (complete feature set)
         result_df['asi'] = normalized_asi  # ASI: Wilder's accumulative swing index (USD normalized)
-        result_df['local_hsp'] = local_hsp
-        result_df['local_lsp'] = local_lsp
+        # Note: Wilder method doesn't distinguish local vs significant - all detected points are significant
+        result_df['local_hsp'] = sig_hsp  # For backward compatibility
+        result_df['local_lsp'] = sig_lsp  # For backward compatibility
         result_df['sig_hsp'] = sig_hsp
         result_df['sig_lsp'] = sig_lsp
         result_df['slope_high'] = hsp_angles  # 1. Slope High: Regression slopes of swing highs

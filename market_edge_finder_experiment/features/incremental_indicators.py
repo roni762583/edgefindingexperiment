@@ -30,11 +30,32 @@ class InstrumentState:
     recent_highs: deque = field(default_factory=lambda: deque(maxlen=50))  # (index, price)
     recent_lows: deque = field(default_factory=lambda: deque(maxlen=50))   # (index, price)
     
-    # HSP/LSP tracking for slope calculation (like batch method)
-    hsp_indices: deque = field(default_factory=lambda: deque(maxlen=10))   # Indices of HSPs
-    hsp_values: deque = field(default_factory=lambda: deque(maxlen=10))    # ASI values at HSPs
-    lsp_indices: deque = field(default_factory=lambda: deque(maxlen=10))   # Indices of LSPs  
-    lsp_values: deque = field(default_factory=lambda: deque(maxlen=10))    # ASI values at LSPs
+    # WILDER'S PROPER ASI SWING DETECTION STATE
+    # Two-step process: Candidate Detection → Breakout Confirmation
+    
+    # Last CONFIRMED significant points (only after breakout confirmation)
+    last_sig_hsp_index: Optional[int] = None      # Index of last significant HSP
+    last_sig_hsp_asi: Optional[float] = None      # ASI value at last significant HSP  
+    last_sig_hsp_price: Optional[float] = None    # HIP (High Price) at significant HSP
+    
+    last_sig_lsp_index: Optional[int] = None      # Index of last significant LSP
+    last_sig_lsp_asi: Optional[float] = None      # ASI value at last significant LSP
+    last_sig_lsp_price: Optional[float] = None    # LOP (Low Price) at significant LSP
+    
+    # PENDING candidates (awaiting breakout confirmation)
+    pending_hsp_index: Optional[int] = None       # Index of pending HSP candidate
+    pending_hsp_asi: Optional[float] = None       # ASI value of pending HSP
+    pending_hsp_price: Optional[float] = None     # High price of pending HSP
+    
+    pending_lsp_index: Optional[int] = None       # Index of pending LSP candidate  
+    pending_lsp_asi: Optional[float] = None       # ASI value of pending LSP
+    pending_lsp_price: Optional[float] = None     # Low price of pending LSP
+    
+    # LEGACY: Old flawed tracking for slope calculation (backward compatibility)
+    hsp_indices: deque = field(default_factory=lambda: deque(maxlen=100))   # Indices of HSPs
+    hsp_values: deque = field(default_factory=lambda: deque(maxlen=100))    # ASI values at HSPs
+    lsp_indices: deque = field(default_factory=lambda: deque(maxlen=100))   # Indices of LSPs  
+    lsp_values: deque = field(default_factory=lambda: deque(maxlen=100))    # ASI values at LSPs
     
     # Last calculated angles for forward-filling (like batch method)
     last_hsp_angle: float = np.nan
@@ -56,6 +77,9 @@ class InstrumentState:
     
     # Price Change State
     prev_close: float = 0.0
+    prev_open: float = 0.0
+    prev_high: float = 0.0
+    prev_low: float = 0.0
     
     # General State
     bar_count: int = 0
@@ -97,8 +121,9 @@ class IncrementalIndicatorCalculator:
     def __init__(self, atr_period: int = 14, adx_period: int = 14):
         self.atr_period = atr_period
         self.adx_period = adx_period
-        self.atr_alpha = 2.0 / (atr_period + 1)
-        self.adx_alpha = 2.0 / (adx_period + 1)
+        # Use the EXACT same smoothing methods as batch processing
+        self.atr_alpha = 2.0 / (atr_period + 1)  # Standard EMA for ATR (like batch)
+        self.adx_alpha = 1.0 / adx_period        # Wilder's smoothing for ADX (like batch)
     
     def calculate_atr_usd_incremental(
         self, 
@@ -203,17 +228,26 @@ class IncrementalIndicatorCalculator:
         
         return state.adx_value
     
-    def calculate_percentile_scaling(self, value: float, history: deque) -> float:
-        """Apply percentile scaling to [0,1] range"""
+    def calculate_percentile_scaling(self, value: float, history: deque, window: int = 200) -> float:
+        """Apply percentile scaling to [0,1] range using 200-bar rolling window (matching batch)"""
         if len(history) < 2:
             return 0.5  # Default to middle until we have history
         
-        # Calculate percentile rank
-        sorted_values = sorted(history)
-        rank = bisect.bisect_left(sorted_values, value) / len(history)
+        # Use last 'window' values for scaling (matching batch rolling window logic)
+        recent_values = list(history)[-window:] if len(history) > window else list(history)
         
-        # Cap at 99th percentile
-        return min(0.995, rank)
+        # Filter out NaN/invalid values
+        valid_values = [v for v in recent_values if not np.isnan(v) and v is not None]
+        
+        if len(valid_values) < 2:
+            return 0.5
+        
+        # Calculate percentile rank (exact match to batch method)
+        count_below = sum(1 for v in valid_values if v < value)
+        percentile_rank = count_below / len(valid_values)
+        
+        # Scale to [0,1] and cap at 1.0 (99th percentile protection, matching batch)
+        return min(1.0, percentile_rank)
     
     def detect_swing_points(
         self, 
@@ -282,55 +316,117 @@ class IncrementalIndicatorCalculator:
         self, 
         ohlc: Dict[str, float], 
         state: InstrumentState,
+        instrument: str,
         limit_multiplier: float = 3.0
     ) -> float:
-        """Calculate ASI (Accumulation Swing Index) incrementally"""
+        """Calculate ASI (Accumulation Swing Index) incrementally with USD normalization"""
         
         if state.bar_count == 0:
             # Initialize first bar
             state.asi_value = 0.0
             return 0.0
         
-        # Get previous OHLC (stored in history)
-        if len(state.high_history) < 2:
+        # Get previous OHLC - need at least 1 previous bar
+        if state.bar_count < 2:
             return state.asi_value
             
-        # Current and previous values
-        C2 = ohlc['close']
-        O2 = ohlc['open'] 
-        H2 = ohlc['high']
-        L2 = ohlc['low']
+        # Convert current OHLC to USD (matching batch calculation)
+        # Convert to pips first, then to USD
+        current_ohlc_pips = {
+            'open': ohlc['open'] / state.pip_size,
+            'high': ohlc['high'] / state.pip_size,
+            'low': ohlc['low'] / state.pip_size,
+            'close': ohlc['close'] / state.pip_size
+        }
         
-        C1 = state.prev_close
-        O1 = state.high_history[-2] if len(state.high_history) >= 2 else ohlc['open']  # Approximation
+        current_ohlc_usd = {
+            'open': current_ohlc_pips['open'] * state.pip_value,
+            'high': current_ohlc_pips['high'] * state.pip_value,
+            'low': current_ohlc_pips['low'] * state.pip_value,
+            'close': current_ohlc_pips['close'] * state.pip_value
+        }
         
-        # Calculate ATR for limit move
-        atr = state.atr_ema if state.atr_ema > 0 else abs(H2 - L2)
-        L = limit_multiplier * atr if atr > 0 else 1.0
+        # Convert previous OHLC to USD 
+        prev_ohlc_pips = {
+            'open': state.prev_open / state.pip_size,
+            'high': state.prev_high / state.pip_size,
+            'low': state.prev_low / state.pip_size,
+            'close': state.prev_close / state.pip_size
+        }
         
-        # Swing Index calculation (Wilder's method)
+        prev_ohlc_usd = {
+            'open': prev_ohlc_pips['open'] * state.pip_value,
+            'high': prev_ohlc_pips['high'] * state.pip_value,
+            'low': prev_ohlc_pips['low'] * state.pip_value,
+            'close': prev_ohlc_pips['close'] * state.pip_value
+        }
+        
+        # Current and previous values in USD (matching batch notation)
+        C2 = current_ohlc_usd['close']  # Current close (USD)
+        O2 = current_ohlc_usd['open']   # Current open (USD)
+        H2 = current_ohlc_usd['high']   # Current high (USD)
+        L2 = current_ohlc_usd['low']    # Current low (USD)
+        
+        C1 = prev_ohlc_usd['close']     # Previous close (USD)
+        O1 = prev_ohlc_usd['open']      # Previous open (USD)
+        
+        # Calculate ATR in USD for limit move (matching batch calculation exactly)
+        # Check if we have enough data for proper ATR (like batch method)
+        if state.bar_count >= 14 and state.atr_ema > 0:
+            # Use ATR if available (already in USD from calculate_atr_usd_incremental)
+            L = limit_multiplier * state.atr_ema
+        else:
+            # Fallback: use recent range average (exact match to batch logic)
+            # Calculate recent range over available bars (up to 10 bars like batch)
+            recent_ranges = []
+            
+            # Add current range
+            current_range_usd = abs(H2 - L2)
+            recent_ranges.append(current_range_usd)
+            
+            # Add ranges from history if available 
+            history_len = len(state.high_history)
+            for j in range(max(0, history_len - 10), history_len):
+                if j < len(state.high_history) and j < len(state.low_history):
+                    # Convert historical ranges to USD
+                    hist_high_usd = (state.high_history[j] / state.pip_size) * state.pip_value
+                    hist_low_usd = (state.low_history[j] / state.pip_size) * state.pip_value
+                    hist_range_usd = abs(hist_high_usd - hist_low_usd)
+                    recent_ranges.append(hist_range_usd)
+            
+            # Calculate mean recent range (matching batch logic)
+            if recent_ranges:
+                recent_range_mean = np.mean(recent_ranges)
+                L = limit_multiplier * recent_range_mean
+            else:
+                L = 1.0  # Final fallback
+        
+        # Swing Index calculation (Wilder's method) - exact match to batch
+        EPSILON = 1e-10
+        
+        # Numerator (N) - same as batch
         N = (C2 - C1) + 0.5 * (C2 - O2) + 0.25 * (C1 - O1)
         
-        # Range calculation
+        # Range (R) - Wilder's original specification (3 scenarios, take maximum)
         term1 = abs(H2 - C1) - 0.5 * abs(L2 - C1) + 0.25 * abs(C1 - O1)
         term2 = abs(L2 - C1) - 0.5 * abs(H2 - C1) + 0.25 * abs(C1 - O1)
         term3 = (H2 - L2) + 0.25 * abs(C1 - O1)
         
         R = max(term1, term2, term3)
         if R <= 0:
-            R = 1e-10
+            R = EPSILON
             
-        # Limit Factor
+        # Limit Factor (K) - Wilder's specification
         K = max(abs(H2 - C1), abs(L2 - C1))
         
-        # Swing Index
-        if L > 1e-10:
+        # SI Calculation with Wilder's 50x multiplier (exact match to batch)
+        if L > EPSILON:
             SI = 50.0 * (N / R) * (K / L)
-            SI = round(SI)  # Round to nearest integer
+            SI = round(SI)  # Round to nearest integer (no capping)
         else:
             SI = 0
             
-        # Accumulate
+        # Accumulate swing index (exact match to batch)
         state.asi_value += SI
         
         return state.asi_value
@@ -338,71 +434,207 @@ class IncrementalIndicatorCalculator:
     def detect_hsp_lsp_incremental(
         self,
         asi_value: float,
-        state: InstrumentState,
-        min_distance: int = 3
+        state: InstrumentState
     ) -> Tuple[bool, bool]:
         """
-        Detect HSP/LSP using ASI values with alternating constraint
-        Matches the batch method's _detect_swing_points_with_alternating_constraint
+        Detect HSP/LSP using 3-bar pattern to match batch method exactly
+        Uses same logic as batch: middle bar higher/lower than both neighbors
         """
         current_idx = state.bar_count
         
         # Add current ASI to history (we need this for swing detection)
         state.asi_history.append(asi_value)
         
-        if len(state.asi_history) < min_distance * 2 + 1:
+        # Need at least 3 bars for 3-bar pattern detection
+        if len(state.asi_history) < 3:
             return False, False
             
-        # Check for swing high/low in ASI
-        check_idx = len(state.asi_history) - min_distance - 1
-        if check_idx < min_distance:
-            return False, False
+        # Check 3-bar pattern: left, middle, right (like batch method)
+        # We check the pattern that was just completed with the new bar
+        if len(state.asi_history) >= 3:
+            right_idx = len(state.asi_history) - 1  # Current bar (just added)
+            middle_idx = len(state.asi_history) - 2  # Previous bar
+            left_idx = len(state.asi_history) - 3   # Bar before that
             
-        is_hsp = True
-        is_lsp = True
-        check_asi = state.asi_history[check_idx]
-        
-        # Check for swing high
-        for i in range(check_idx - min_distance, check_idx + min_distance + 1):
-            if i != check_idx and i >= 0 and i < len(state.asi_history):
-                if state.asi_history[i] >= check_asi:
-                    is_hsp = False
-                    break
+            left_asi = state.asi_history[left_idx]
+            middle_asi = state.asi_history[middle_idx] 
+            right_asi = state.asi_history[right_idx]
+            
+            # Skip NaN values (like batch method)
+            if np.isnan(left_asi) or np.isnan(middle_asi) or np.isnan(right_asi):
+                return False, False
+            
+            # HSP: middle bar higher than both neighbors (exact match to batch)
+            is_hsp = middle_asi > left_asi and middle_asi > right_asi
+            
+            # LSP: middle bar lower than both neighbors (exact match to batch)
+            is_lsp = middle_asi < left_asi and middle_asi < right_asi
+            
+            # Apply alternating constraint (like batch method)
+            detected_hsp = False
+            detected_lsp = False
+            
+            # Determine the most recent swing type
+            last_hsp_idx = state.hsp_indices[-1] if state.hsp_indices else -1
+            last_lsp_idx = state.lsp_indices[-1] if state.lsp_indices else -1
+            
+            # FIXED: Calculate correct dataset index for the middle bar
+            # current_idx is the current bar being processed (state.bar_count)
+            # The middle bar of the 3-bar pattern is 2 bars ago in the dataset
+            middle_dataset_idx = current_idx - 2
+            
+            if is_hsp:
+                # Can add HSP if: 1) no previous swings, OR 2) last swing was LSP
+                if len(state.hsp_indices) == 0 and len(state.lsp_indices) == 0:
+                    # First swing point ever
+                    state.hsp_indices.append(middle_dataset_idx)
+                    state.hsp_values.append(middle_asi)
+                    detected_hsp = True
+                elif last_lsp_idx > last_hsp_idx:
+                    # Last swing was LSP, so we can add HSP
+                    state.hsp_indices.append(middle_dataset_idx)
+                    state.hsp_values.append(middle_asi)
+                    detected_hsp = True
                     
-        # Check for swing low
-        for i in range(check_idx - min_distance, check_idx + min_distance + 1):
-            if i != check_idx and i >= 0 and i < len(state.asi_history):
-                if state.asi_history[i] <= check_asi:
-                    is_lsp = False
-                    break
+            if is_lsp:
+                # Can add LSP if: 1) no previous swings, OR 2) last swing was HSP
+                if len(state.hsp_indices) == 0 and len(state.lsp_indices) == 0:
+                    # First swing point ever
+                    state.lsp_indices.append(middle_dataset_idx)
+                    state.lsp_values.append(middle_asi)
+                    detected_lsp = True
+                elif last_hsp_idx > last_lsp_idx:
+                    # Last swing was HSP, so we can add LSP
+                    state.lsp_indices.append(middle_dataset_idx)
+                    state.lsp_values.append(middle_asi)
+                    detected_lsp = True
+                    
+            return detected_hsp, detected_lsp
         
-        # Apply alternating constraint (like batch method)
-        detected_hsp = False
-        detected_lsp = False
+        return False, False
+    
+    def detect_hsp_lsp_wilder_proper(
+        self,
+        asi_value: float,
+        high_price: float,
+        low_price: float,
+        state: InstrumentState
+    ) -> Tuple[bool, bool]:
+        """
+        Proper Wilder ASI swing detection with two-step process:
+        1. Candidate Detection: Local high/low in ASI (3-bar pattern)  
+        2. Breakout Confirmation: Only confirmed after breaking opposite significant point
         
-        if is_hsp:
-            # Check if last significant point was LSP
-            if len(state.lsp_indices) > len(state.hsp_indices):
-                state.hsp_indices.append(current_idx - min_distance)
-                state.hsp_values.append(check_asi)
-                detected_hsp = True
-            elif len(state.hsp_indices) == 0:  # First HSP
-                state.hsp_indices.append(current_idx - min_distance)
-                state.hsp_values.append(check_asi)
-                detected_hsp = True
+        Reference: New Concepts in Technical Trading Systems (1978), pp. 96-102
+        """
+        current_idx = state.bar_count
+        
+        # Add current ASI to history for candidate detection
+        state.asi_history.append(asi_value)
+        
+        # Step 1: CANDIDATE DETECTION (3-bar pattern)
+        detected_candidate = False
+        
+        if len(state.asi_history) >= 3:
+            left_asi = state.asi_history[-3]
+            middle_asi = state.asi_history[-2] 
+            right_asi = state.asi_history[-1]  # Current bar
+            
+            # Skip NaN values
+            if not (np.isnan(left_asi) or np.isnan(middle_asi) or np.isnan(right_asi)):
+                # FIXED: Match batch method exactly - middle bar is at current_idx - 2
+                # In batch: when processing bar i, middle is at i-1
+                # In incremental: when processing bar current_idx, middle should be at current_idx - 2
+                middle_dataset_idx = current_idx - 2  # Middle bar index in dataset
                 
-        if is_lsp:
-            # Check if last significant point was HSP  
-            if len(state.hsp_indices) > len(state.lsp_indices):
-                state.lsp_indices.append(current_idx - min_distance)
-                state.lsp_values.append(check_asi)
-                detected_lsp = True
-            elif len(state.lsp_indices) == 0:  # First LSP
-                state.lsp_indices.append(current_idx - min_distance) 
-                state.lsp_values.append(check_asi)
-                detected_lsp = True
+                # HSP Candidate: middle bar higher than both neighbors
+                if middle_asi > left_asi and middle_asi > right_asi:
+                    # Store as pending HSP candidate (needs breakout confirmation)
+                    state.pending_hsp_index = middle_dataset_idx
+                    state.pending_hsp_asi = middle_asi
+                    state.pending_hsp_price = high_price  # HIP (High Price)
+                    detected_candidate = True
                 
-        return detected_hsp, detected_lsp
+                # LSP Candidate: middle bar lower than both neighbors  
+                if middle_asi < left_asi and middle_asi < right_asi:
+                    # Store as pending LSP candidate (needs breakout confirmation)
+                    state.pending_lsp_index = middle_dataset_idx
+                    state.pending_lsp_asi = middle_asi
+                    state.pending_lsp_price = low_price  # LOP (Low Price)
+                    detected_candidate = True
+        
+        # Step 2: BREAKOUT CONFIRMATION
+        confirmed_hsp = False
+        confirmed_lsp = False
+        
+        # Confirm pending HSP: ASI must drop BELOW last significant LSP
+        if (state.pending_hsp_index is not None and 
+            state.last_sig_lsp_asi is not None and
+            asi_value < state.last_sig_lsp_asi):
+            
+            # Confirm the pending HSP as significant
+            state.last_sig_hsp_index = state.pending_hsp_index
+            state.last_sig_hsp_asi = state.pending_hsp_asi
+            state.last_sig_hsp_price = state.pending_hsp_price
+            
+            # Add to legacy tracking for slope calculation compatibility
+            state.hsp_indices.append(state.pending_hsp_index)
+            state.hsp_values.append(state.pending_hsp_asi)
+            
+            # Clear pending state
+            state.pending_hsp_index = None
+            state.pending_hsp_asi = None
+            state.pending_hsp_price = None
+            
+            confirmed_hsp = True
+        
+        # Confirm pending LSP: ASI must rise ABOVE last significant HSP
+        if (state.pending_lsp_index is not None and
+            state.last_sig_hsp_asi is not None and
+            asi_value > state.last_sig_hsp_asi):
+            
+            # Confirm the pending LSP as significant
+            state.last_sig_lsp_index = state.pending_lsp_index
+            state.last_sig_lsp_asi = state.pending_lsp_asi
+            state.last_sig_lsp_price = state.pending_lsp_price
+            
+            # Add to legacy tracking for slope calculation compatibility
+            state.lsp_indices.append(state.pending_lsp_index)
+            state.lsp_values.append(state.pending_lsp_asi)
+            
+            # Clear pending state
+            state.pending_lsp_index = None
+            state.pending_lsp_asi = None
+            state.pending_lsp_price = None
+            
+            confirmed_lsp = True
+        
+        # Special case: First swing point (no prior significant point to break)
+        if (state.last_sig_hsp_asi is None and state.last_sig_lsp_asi is None):
+            # Allow first candidate to be confirmed immediately
+            if state.pending_hsp_index is not None:
+                state.last_sig_hsp_index = state.pending_hsp_index
+                state.last_sig_hsp_asi = state.pending_hsp_asi
+                state.last_sig_hsp_price = state.pending_hsp_price
+                state.hsp_indices.append(state.pending_hsp_index)
+                state.hsp_values.append(state.pending_hsp_asi)
+                state.pending_hsp_index = None
+                state.pending_hsp_asi = None
+                state.pending_hsp_price = None
+                confirmed_hsp = True
+                
+            elif state.pending_lsp_index is not None:
+                state.last_sig_lsp_index = state.pending_lsp_index
+                state.last_sig_lsp_asi = state.pending_lsp_asi
+                state.last_sig_lsp_price = state.pending_lsp_price
+                state.lsp_indices.append(state.pending_lsp_index)
+                state.lsp_values.append(state.pending_lsp_asi)
+                state.pending_lsp_index = None
+                state.pending_lsp_asi = None
+                state.pending_lsp_price = None
+                confirmed_lsp = True
+        
+        return confirmed_hsp, confirmed_lsp
     
     def calculate_angle_slopes_incremental(
         self,
@@ -483,11 +715,13 @@ def update_indicators(
     direction = calculator.calculate_percentile_scaling(adx_value, state.adx_history) if adx_value > 0 else np.nan
     
     # 3. Calculate ASI and detect HSP/LSP for slope calculation
-    asi_value = calculator.calculate_asi_incremental(new_ohlc, state)
+    asi_value = calculator.calculate_asi_incremental(new_ohlc, state, instrument)
     state.asi_value = asi_value
     
-    # Detect HSP/LSP using ASI values (like batch method)
-    is_hsp, is_lsp = calculator.detect_hsp_lsp_incremental(asi_value, state)
+    # Detect HSP/LSP using proper Wilder method (like batch method)
+    is_hsp, is_lsp = calculator.detect_hsp_lsp_wilder_proper(
+        asi_value, new_ohlc['high'], new_ohlc['low'], state
+    )
     
     # Calculate angle slopes from last two HSP/LSP points (like batch method)
     slope_high, slope_low = calculator.calculate_angle_slopes_incremental(state)
@@ -498,8 +732,15 @@ def update_indicators(
     else:
         price_change = 0.0
     
-    # Update previous close for next iteration
+    # Update previous OHLC for next iteration (needed for ASI calculation)
+    state.prev_open = new_ohlc['open']
+    state.prev_high = new_ohlc['high']
+    state.prev_low = new_ohlc['low']
     state.prev_close = new_ohlc['close']
+    
+    # Update historical data for range calculations
+    state.high_history.append(new_ohlc['high'])
+    state.low_history.append(new_ohlc['low'])
     
     # Prepare indicators output
     indicators = {

@@ -1,0 +1,7 @@
+,slope_high,slope_low,volatility,direction,log_returns
+Mean across pairs,0.0106,0.0189,0.3659,0.3547,0.0000
+Std of means,0.0290,0.0246,0.1428,0.0097,0.0000
+Min mean,-0.0292,-0.0139,0.1591,0.3392,-0.0000
+Max mean,0.0648,0.0828,0.6437,0.3741,0.0000
+Avg volatility,0.8588,0.8611,0.1495,0.1130,0.0011
+Avg coverage,99.6%,99.6%,99.7%,99.5%,100.0%

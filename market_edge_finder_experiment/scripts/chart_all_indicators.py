@@ -176,9 +176,9 @@ def create_comprehensive_indicator_chart():
             ax7.plot(x_data, plot_data['direction'], 'darkgreen', linewidth=2, label='Direction (ADX-based)')
             ax7.fill_between(x_data, 0, plot_data['direction'], alpha=0.3, color='green')
             
-            # Add reference lines
-            ax7.axhline(0.5, color='orange', linestyle='--', alpha=0.7, label='0.5 threshold')
-            ax7.axhline(0.8, color='red', linestyle=':', alpha=0.7, label='0.8 strong trend')
+            # Add reference lines for ADX/100 scaling
+            ax7.axhline(0.25, color='orange', linestyle='--', alpha=0.7, label='0.25 (ADX=25)')
+            ax7.axhline(0.50, color='red', linestyle=':', alpha=0.7, label='0.50 (ADX=50)')
             
             # Add statistics
             dir_mean = valid_direction.mean()
@@ -194,9 +194,9 @@ def create_comprehensive_indicator_chart():
         ax7.text(0.5, 0.5, 'Direction column not found', transform=ax7.transAxes, 
                 ha='center', va='center', fontsize=12)
     
-    ax7.set_title('7. Direction Indicator - tanh(ADX/25) Scaling', fontweight='bold')
-    ax7.set_ylabel('Direction Strength (0-1)')
-    ax7.set_ylim(-0.1, 1.1)
+    ax7.set_title('7. Direction Indicator - ADX/100 Linear Scaling', fontweight='bold')
+    ax7.set_ylabel('Direction Strength (ADX/100)')
+    ax7.set_ylim(-0.05, 0.7)
     ax7.legend()
     ax7.grid(True, alpha=0.3)
     
@@ -205,13 +205,15 @@ def create_comprehensive_indicator_chart():
     if 'volatility' in plot_data.columns:
         valid_volatility = plot_data['volatility'].dropna()
         if len(valid_volatility) > 0:
-            ax8.plot(x_data, plot_data['volatility'], 'darkorange', linewidth=2, label='Volatility (ATR z-score)')
-            ax8.fill_between(x_data, 0, plot_data['volatility'], alpha=0.3, color='orange')
+            ax8.plot(x_data, plot_data['volatility'], 'darkorange', linewidth=2, label='Volatility (Raw z-score)')
+            ax8.fill_between(x_data, plot_data['volatility'], alpha=0.3, color='orange')
             
-            # Add reference lines
-            ax8.axhline(0.5, color='blue', linestyle='--', alpha=0.7, label='0.5 median')
-            ax8.axhline(0.2, color='red', linestyle=':', alpha=0.7, label='0.2 high vol')
-            ax8.axhline(0.8, color='green', linestyle=':', alpha=0.7, label='0.8 low vol')
+            # Add reference lines for z-score
+            ax8.axhline(0, color='black', linestyle='-', alpha=0.7, label='0 (mean)')
+            ax8.axhline(1, color='red', linestyle='--', alpha=0.7, label='+1σ (high vol)')
+            ax8.axhline(-1, color='blue', linestyle='--', alpha=0.7, label='-1σ (low vol)')
+            ax8.axhline(2, color='red', linestyle=':', alpha=0.5, label='+2σ (extreme vol)')
+            ax8.axhline(-2, color='blue', linestyle=':', alpha=0.5, label='-2σ (very low vol)')
             
             # Add statistics
             vol_mean = valid_volatility.mean()
@@ -227,9 +229,9 @@ def create_comprehensive_indicator_chart():
         ax8.text(0.5, 0.5, 'Volatility column not found', transform=ax8.transAxes, 
                 ha='center', va='center', fontsize=12)
     
-    ax8.set_title('8. Volatility Indicator - 1 - arctan(ATR_zscore)', fontweight='bold')
-    ax8.set_ylabel('Volatility Level (0-1)')
-    ax8.set_ylim(-0.1, 1.1)
+    ax8.set_title('8. Volatility Indicator - Raw ATR Z-Score', fontweight='bold')
+    ax8.set_ylabel('ATR Z-Score (unbounded)')
+    ax8.set_ylim(-2.5, 2.5)
     ax8.legend()
     ax8.grid(True, alpha=0.3)
     
@@ -252,8 +254,8 @@ def create_comprehensive_indicator_chart():
 ✅ 1. ASI (Accumulative Swing Index): USD normalized, Wilder's formula (50x multiplier)
 ✅ 2a. HSP Angles: Linear regression slopes between high swing points (-1,+1)
 ✅ 2b. LSP Angles: Linear regression slopes between low swing points (-1,+1)
-✅ 3. Direction: ADX-based directional strength, tanh(ADX/25) scaling (0-1)
-✅ 4. Volatility: ATR z-score transformation, 1-arctan(zscore) (0-1)
+✅ 3. Direction: ADX linear scaling, ADX/100 (unbounded)
+✅ 4. Volatility: Raw ATR z-score, (ATR-SMA)/STDEV (unbounded)
 
 📊 System Statistics (EUR_USD H1, 700 bars):
 • ASI range: [{asi_min:.0f}, {asi_max:.0f}] USD per 100k lot
@@ -263,7 +265,7 @@ def create_comprehensive_indicator_chart():
 • Direction: {dir_stats}
 • Volatility: {vol_stats}
 
-🎯 Complete 4-indicator edge discovery system operational!
+🎯 Modified 4-indicator system with linear scaling operational!
 """
     
     ax9.text(0.05, 0.8, implementation_text, fontsize=10, transform=ax9.transAxes,

@@ -185,6 +185,189 @@ def test_single_instrument_scaling(instrument="EUR_USD", num_bars=1000):
         'atr_usd': atr_usd
     }
 
+def test_correlation_validation(instruments=['EUR_USD', 'GBP_USD', 'USD_JPY'], high_vol_threshold=0.8):
+    """
+    Test cross-instrument correlation during high-volatility periods
+    
+    Validates that dollar scaling makes instruments truly comparable by checking:
+    1. Correlation >0.8 during high-volatility periods
+    2. Similar regime behavior across instruments
+    3. Consistent volatility ranking preservation
+    
+    Args:
+        instruments: List of instruments to test correlations
+        high_vol_threshold: Percentile threshold for high-volatility periods
+    """
+    print(f"\n🔍 Testing correlation validation for {len(instruments)} instruments...")
+    
+    generator = FXFeatureGenerator()
+    raw_data_dir = project_root / "data/raw"
+    
+    # Store volatility data for each instrument
+    volatility_data = {}
+    direction_data = {}
+    atr_usd_data = {}
+    
+    for instrument in instruments:
+        print(f"\n📊 Loading {instrument}...")
+        
+        file_path = raw_data_dir / f"{instrument}_3years_H1.csv"
+        if not file_path.exists():
+            print(f"⚠️  {instrument}: File not found")
+            continue
+            
+        try:
+            df = pd.read_csv(file_path)
+            df['time'] = pd.to_datetime(df['time'])
+            df.set_index('time', inplace=True)
+            
+            # Take last 1000 bars for analysis
+            df_test = df.tail(1000).copy()
+            
+            high = df_test['high'].values
+            low = df_test['low'].values
+            close = df_test['close'].values
+            
+            # Calculate indicators
+            atr_usd = generator.calculate_atr_dollar_scaled(high, low, close, instrument)
+            volatility = generator.calculate_volatility_dollar_percentile(high, low, close, instrument)
+            direction = generator.calculate_direction_percentile(high, low, close)
+            
+            # Store with timestamp alignment
+            volatility_data[instrument] = pd.Series(volatility, index=df_test.index)
+            direction_data[instrument] = pd.Series(direction, index=df_test.index)
+            atr_usd_data[instrument] = pd.Series(atr_usd, index=df_test.index)
+            
+            print(f"✅ {instrument}: {len(df_test)} bars loaded")
+            
+        except Exception as e:
+            print(f"❌ {instrument}: Failed - {e}")
+    
+    if len(volatility_data) < 2:
+        print("❌ Insufficient data for correlation analysis")
+        return None
+    
+    # Convert to aligned DataFrame
+    vol_df = pd.DataFrame(volatility_data).dropna()
+    dir_df = pd.DataFrame(direction_data).dropna()
+    atr_df = pd.DataFrame(atr_usd_data).dropna()
+    
+    print(f"\n📊 Correlation Analysis Results:")
+    print("=" * 80)
+    
+    # 1. Overall correlations
+    print(f"\n🔍 Overall Volatility Correlations:")
+    vol_corr = vol_df.corr()
+    print(vol_corr.round(3))
+    
+    print(f"\n🔍 Overall Direction Correlations:")
+    dir_corr = dir_df.corr()
+    print(dir_corr.round(3))
+    
+    # 2. High-volatility period analysis
+    print(f"\n🔥 High-Volatility Period Analysis (>{high_vol_threshold*100:.0f}th percentile):")
+    
+    correlation_results = {}
+    
+    for instrument in vol_df.columns:
+        # Define high-volatility periods for this instrument
+        vol_threshold = vol_df[instrument].quantile(high_vol_threshold)
+        high_vol_mask = vol_df[instrument] > vol_threshold
+        
+        if high_vol_mask.sum() < 10:  # Need minimum periods
+            continue
+            
+        print(f"\n📊 {instrument} high-vol periods: {high_vol_mask.sum()} bars (threshold: {vol_threshold:.3f})")
+        
+        # Calculate correlations during high-vol periods
+        high_vol_corr = vol_df[high_vol_mask].corr()[instrument]
+        high_vol_dir_corr = dir_df[high_vol_mask].corr()[instrument]
+        
+        correlation_results[instrument] = {
+            'vol_correlations': high_vol_corr.drop(instrument),
+            'dir_correlations': high_vol_dir_corr.drop(instrument),
+            'high_vol_periods': high_vol_mask.sum(),
+            'threshold': vol_threshold
+        }
+        
+        # Print correlations for this instrument
+        for other_instrument in high_vol_corr.drop(instrument).index:
+            vol_corr_val = high_vol_corr[other_instrument]
+            dir_corr_val = high_vol_dir_corr[other_instrument]
+            
+            vol_status = "✅" if vol_corr_val > 0.8 else "⚠️" if vol_corr_val > 0.5 else "❌"
+            dir_status = "✅" if dir_corr_val > 0.3 else "⚠️" if dir_corr_val > 0.1 else "❌"
+            
+            print(f"  {instrument} vs {other_instrument}: Vol={vol_corr_val:.3f} {vol_status}, Dir={dir_corr_val:.3f} {dir_status}")
+    
+    # 3. Economic comparability validation
+    print(f"\n💰 Economic Comparability Validation:")
+    atr_stats = atr_df.describe()
+    print(atr_stats.round(2))
+    
+    # Check if volatility rankings are preserved
+    print(f"\n📊 Volatility Ranking Consistency:")
+    vol_rankings = vol_df.rank(axis=1, ascending=False)
+    ranking_consistency = vol_rankings.std(axis=0)
+    
+    for instrument in ranking_consistency.index:
+        consistency = ranking_consistency[instrument]
+        status = "✅" if consistency < 1.0 else "⚠️" if consistency < 1.5 else "❌"
+        print(f"  {instrument}: Ranking std={consistency:.2f} {status}")
+    
+    # 4. Summary validation
+    print(f"\n🎯 Validation Summary:")
+    
+    # Count high correlations
+    all_vol_corrs = []
+    all_dir_corrs = []
+    
+    for instr_data in correlation_results.values():
+        all_vol_corrs.extend(instr_data['vol_correlations'].values)
+        all_dir_corrs.extend(instr_data['dir_correlations'].values)
+    
+    high_vol_corrs = [c for c in all_vol_corrs if c > 0.8]
+    medium_vol_corrs = [c for c in all_vol_corrs if 0.5 < c <= 0.8]
+    
+    print(f"  • High vol correlations >0.8: {len(high_vol_corrs)}/{len(all_vol_corrs)} ({len(high_vol_corrs)/len(all_vol_corrs)*100:.1f}%)")
+    print(f"  • Medium vol correlations >0.5: {len(medium_vol_corrs)}/{len(all_vol_corrs)} ({len(medium_vol_corrs)/len(all_vol_corrs)*100:.1f}%)")
+    print(f"  • Mean vol correlation: {np.mean(all_vol_corrs):.3f}")
+    print(f"  • Mean dir correlation: {np.mean(all_dir_corrs):.3f}")
+    
+    # Overall assessment
+    high_corr_pct = len(high_vol_corrs) / len(all_vol_corrs) if all_vol_corrs else 0
+    mean_corr = np.mean(all_vol_corrs) if all_vol_corrs else 0
+    
+    if high_corr_pct > 0.7 and mean_corr > 0.6:
+        print(f"  🎉 VALIDATION PASSED: Dollar scaling achieves cross-instrument comparability")
+    elif high_corr_pct > 0.5 and mean_corr > 0.5:
+        print(f"  ⚠️  VALIDATION PARTIAL: Some cross-instrument comparability achieved")
+    else:
+        print(f"  ❌ VALIDATION FAILED: Dollar scaling not achieving sufficient comparability")
+    
+    # Save detailed results
+    results_path = project_root / "data/test/correlation_validation_results.csv"
+    
+    # Create detailed results DataFrame
+    detailed_results = []
+    for base_instr, data in correlation_results.items():
+        for other_instr in data['vol_correlations'].index:
+            detailed_results.append({
+                'base_instrument': base_instr,
+                'comparison_instrument': other_instr,
+                'volatility_correlation': data['vol_correlations'][other_instr],
+                'direction_correlation': data['dir_correlations'][other_instr],
+                'high_vol_periods': data['high_vol_periods'],
+                'vol_threshold': data['threshold']
+            })
+    
+    if detailed_results:
+        results_df = pd.DataFrame(detailed_results)
+        results_df.to_csv(results_path, index=False)
+        print(f"\n📊 Detailed results saved to: {results_path}")
+    
+    return correlation_results
+
 def test_multiple_instruments():
     """Test scaling across multiple instruments for comparability"""
     
@@ -307,12 +490,20 @@ def main():
     # Test 2: Cross-instrument comparability
     results = test_multiple_instruments()
     
+    # Test 3: Correlation validation during high-volatility periods
+    print(f"\n" + "="*80)
+    print("🔥 CORRELATION VALIDATION TESTS")
+    print("="*80)
+    correlation_results = test_correlation_validation(['EUR_USD', 'GBP_USD', 'USD_JPY'], high_vol_threshold=0.8)
+    
     print(f"\n🎉 ADX-ATR scaling tests completed!")
     print(f"✅ Implementation follows specification:")
     print(f"  • ATR: Dollar scaling → Percentile scaling [0,1]")
     print(f"  • ADX: Raw values → Percentile scaling [0,1]")
     print(f"  • 200-bar rolling window for percentile calculation")
     print(f"  • Cross-instrument economic comparability achieved")
+    if correlation_results:
+        print(f"  • Correlation validation completed with detailed analysis")
     
     plt.show()
 
