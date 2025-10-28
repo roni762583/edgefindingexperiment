@@ -79,11 +79,11 @@ CSI_USE_DYNAMIC_API=false
 
 ## Architecture
 
-- **TCNAE:** Temporal Convolutional Autoencoder for sequence compression
-- **LightGBM:** Gradient boosting for final predictions
-- **Context Tensor:** Cross-instrument information sharing
-- **20 FX Pairs:** EUR_USD, GBP_USD, USD_JPY, etc.
-- **Features:** Complete 4-indicator system per instrument: ASI (USD normalized), HSP/LSP angles (linear mapped), Direction (ADX scaled), Volatility (ATR z-score normalized)
+- **TCNAE:** Temporal Convolutional Autoencoder for sequence compression (144→120 latent dimensions)
+- **LightGBM:** Gradient boosting for final predictions (120 features → 24 predictions)
+- **Context Tensor:** Cross-instrument information sharing (24×5 + 24 = 144 inputs)
+- **24 FX Pairs:** EUR_USD, GBP_USD, USD_JPY, EUR_CAD, EUR_NZD, GBP_CAD, GBP_NZD, etc.
+- **Features:** Complete 5-indicator system per instrument: HSP/LSP angles, Direction, Volatility, Price Change
 
 ## Data Pipeline
 

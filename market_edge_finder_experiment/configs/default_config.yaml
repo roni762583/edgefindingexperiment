@@ -12,7 +12,7 @@ model:
   # TCNAE parameters
   tcnae_input_channels: 4
   tcnae_sequence_length: 4
-  tcnae_latent_dim: 100
+  tcnae_latent_dim: 120
   tcnae_hidden_channels: [32, 64, 128]
   tcnae_kernel_size: 3
   tcnae_dropout: 0.2
@@ -27,17 +27,17 @@ model:
   gbdt_reg_lambda: 0.1
   
   # Context manager parameters
-  context_dim: 100
+  context_dim: 120
   context_ema_alpha: 0.1
   context_correlation_window: 100
   
   # General parameters
-  num_instruments: 20
+  num_instruments: 24
   device: "auto"  # auto, cpu, cuda, mps
 
 # Data Processing Configuration
 data:
-  # FX Instruments (20 major pairs)
+  # FX Instruments (24 major pairs)
   instruments:
     - "EUR_USD"
     - "GBP_USD"
@@ -59,6 +59,10 @@ data:
     - "NZD_JPY"
     - "CAD_JPY"
     - "AUD_NZD"
+    - "EUR_CAD"
+    - "EUR_NZD"
+    - "GBP_CAD"
+    - "GBP_NZD"
   
   # Data parameters
   granularity: "H1"  # Hourly data

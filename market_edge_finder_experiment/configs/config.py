@@ -41,7 +41,7 @@ class ModelConfig:
     # TCNAE parameters
     tcnae_input_channels: int = 4
     tcnae_sequence_length: int = 4
-    tcnae_latent_dim: int = 100
+    tcnae_latent_dim: int = 120
     tcnae_hidden_channels: List[int] = None
     tcnae_kernel_size: int = 3
     tcnae_dropout: float = 0.2
@@ -56,12 +56,12 @@ class ModelConfig:
     gbdt_reg_lambda: float = 0.1
     
     # Context manager parameters
-    context_dim: int = 100
+    context_dim: int = 120
     context_ema_alpha: float = 0.1
     context_correlation_window: int = 100
     
     # General parameters
-    num_instruments: int = 20
+    num_instruments: int = 24
     device: str = 'auto'  # 'auto', 'cpu', 'cuda', 'mps'
     
     def __post_init__(self):

@@ -657,8 +657,8 @@ if __name__ == "__main__":
     # Generate test data
     np.random.seed(42)
     n_samples = 1000
-    latent_dim = 100
-    n_instruments = 20
+    latent_dim = 120
+    n_instruments = 24
     
     # Simulate latent features from TCNAE
     X = np.random.randn(n_samples, latent_dim)

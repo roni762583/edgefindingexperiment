@@ -19,12 +19,12 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TCNAEConfig:
     """Configuration for TCNAE model"""
-    input_dim: int = 100  # 20 instruments × 4 features + context
+    input_dim: int = 144  # 24 instruments × 5 features + 24 predictions
     sequence_length: int = 4  # 4-hour lookback
-    latent_dim: int = 100  # Compressed representation size
+    latent_dim: int = 120  # Compressed representation size
     
     # Encoder parameters
-    encoder_channels: List[int] = None  # [100, 128, 96, 64]
+    encoder_channels: List[int] = None  # [144, 128, 96, 64]
     encoder_kernel_sizes: List[int] = None  # [3, 3, 3, 3]
     encoder_dilations: List[int] = None  # [1, 2, 4, 8]
     
@@ -642,9 +642,9 @@ if __name__ == "__main__":
     
     # Test TCNAE model
     config = TCNAEConfig(
-        input_dim=100,
+        input_dim=144,
         sequence_length=4,
-        latent_dim=100,
+        latent_dim=120,
         dropout=0.1
     )
     
