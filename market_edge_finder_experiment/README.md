@@ -259,14 +259,13 @@ model:
 
 ### 1. Historical Data Download
 ```bash
-# Primary download script (CSV format first)
+# Primary download script (CSV format)
 python download_real_data_v20.py
 ```
 
 **Data Storage Strategy:**
-- **CSV First**: Download complete 3-year datasets as CSV (human readable, debuggable)
+- **CSV Storage**: Download complete 3-year datasets as CSV (human readable, debuggable)
 - **Verify Completeness**: Ensure all ~26,280 hours downloaded successfully
-- **Convert to Parquet**: Only after verification, convert for performance
 
 **Verification:**
 ```bash
@@ -489,7 +488,7 @@ Production-grade hybrid ML system combining Temporal Convolutional Autoencoder (
 - [x] **Historical Data Download System**
   - Parallel downloading for 24 FX pairs
   - Data validation and quality checks
-  - Efficient storage format (CSV first, then Parquet)
+  - Efficient storage format (CSV for human readability and debugging)
   - Error handling and retry mechanisms
 
 - [ ] **Real-time Data Pipeline**
@@ -629,7 +628,7 @@ Successfully implemented a comprehensive incremental processing system with **du
 - **Dynamic pip values**: `python scripts/test_usd_pairs_dynamic_pips.py`
 
 **Data Download & Processing:**
-- **Download all 24 instruments**: `python download_real_data_v20.py` (saves to CSV first)
+- **Download all 24 instruments**: `python download_real_data_v20.py` (saves to CSV)
 - **Download missing only**: Smart detection automatically downloads missing instruments
 - Data preprocessing: `python scripts/run_preprocessing.py`
 - Feature engineering: `python scripts/run_complete_data_pipeline.py`
