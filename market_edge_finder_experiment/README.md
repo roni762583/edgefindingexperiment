@@ -310,9 +310,9 @@ python scripts/run_complete_data_pipeline.py
 - Momentum indicators with trend strength
 
 #### Price Change Indicator (5th Indicator)
-- Multiple scaling options: log returns, percentage change, normalized change
+- **Log returns**: `log(close[t] / close[t-1])` for normalized price changes
 - Real-time compatible with incremental updates
-- Scaling method TBD based on ML performance analysis
+- Provides scale-invariant measure of price movements
 - Integration with existing 4-indicator framework
 
 ### Incremental Update Architecture
