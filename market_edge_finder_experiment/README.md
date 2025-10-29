@@ -323,10 +323,16 @@ python scripts/run_complete_data_pipeline.py
 - Consistent calculation between historical and live processing
 
 #### Single Update Function
-- Accept new OHLC row + prior state → return 5 indicators + updated state
-- Prevent transcription errors between training and production
-- Handle approximations for rolling statistics (EMA, STDEV, percentiles)
-- Compatible with both batch historical processing and real-time feeds
+- **Input**: New OHLC bar + prior calculation state 
+- **Output**: 5 indicators for current bar + updated state for next bar
+- **Updated State Includes**:
+  - Rolling window buffers (200 ATR values, 200 ADX values for percentile scaling)
+  - EMA values (ATR EMA, ADX components) for incremental calculation
+  - Swing point history (confirmed HSP/LSP points for slope calculation)
+  - Previous OHLC values (needed for price change and ASI calculation)
+  - Bar count, pip size, and other metadata
+- **Purpose**: Preserve calculation memory between bars to enable live processing
+- **Design**: Prevent transcription errors between training and production
 
 ---
 
@@ -536,7 +542,8 @@ Production-grade hybrid ML system combining Temporal Convolutional Autoencoder (
   - Consistent calculation between historical and live processing
 
 - [x] **Single Update Function**
-  - Accept new OHLC row + prior state → return 5 indicators + updated state
+  - **Input**: New OHLC bar + prior calculation state → **Output**: 5 indicators + updated state
+  - **Updated state preserves**: ATR/ADX buffers, EMA values, swing points, previous OHLC
   - 99.94% correlation between batch and incremental processing
   - Compatible with both batch historical processing and real-time feeds
 
