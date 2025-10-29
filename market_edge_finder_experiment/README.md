@@ -12,7 +12,7 @@ A comprehensive technical analysis system implementing all 5 core indicators for
 1. **Slope High**: High swing point regression slopes 
 2. **Slope Low**: Low swing point regression slopes
 3. **Direction**: ADX-based directional strength indicator
-4. **Volatility**: ATR z-score normalized volatility measure
+4. **Volatility**: ATR percentile scaled [0,1] volatility measure
 5. **Price Change**: Log returns with percentile scaling
 
 ### 📚 Reference Implementation (NOT used in edge finding):
