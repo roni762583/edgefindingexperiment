@@ -239,7 +239,7 @@ class EdgeFindingOandaDownloader:
             for candle in candles_data:
                 if candle.complete:  # Only complete candles
                     processed_candles.append({
-                        'timestamp': candle.time,
+                        'time': candle.time,
                         'open': float(candle.mid.o),
                         'high': float(candle.mid.h),
                         'low': float(candle.mid.l),

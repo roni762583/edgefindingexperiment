@@ -1,0 +1,35 @@
+DATA CLEANING SUMMARY REPORT
+============================================================
+
+Total original rows: 447,747
+Total final rows: 224,955
+Total removed rows: 222,792 (49.8%)
+Files processed: 24
+
+Per-instrument summary:
+  AUD_CHF: 9,246 rows (50.4% removed)
+  AUD_JPY: 9,437 rows (49.4% removed)
+  AUD_NZD: 9,136 rows (51.0% removed)
+  AUD_USD: 9,296 rows (50.2% removed)
+  CAD_JPY: 9,400 rows (49.6% removed)
+  CHF_JPY: 9,504 rows (49.1% removed)
+  EUR_AUD: 9,305 rows (50.1% removed)
+  EUR_CAD: 9,443 rows (49.4% removed)
+  EUR_CHF: 9,343 rows (49.9% removed)
+  EUR_GBP: 9,180 rows (50.8% removed)
+  EUR_JPY: 9,617 rows (48.4% removed)
+  EUR_NZD: 9,354 rows (49.9% removed)
+  EUR_USD: 9,321 rows (50.0% removed)
+  GBP_AUD: 9,404 rows (49.6% removed)
+  GBP_CAD: 9,451 rows (49.3% removed)
+  GBP_CHF: 9,317 rows (50.1% removed)
+  GBP_JPY: 9,574 rows (48.7% removed)
+  GBP_NZD: 9,427 rows (49.5% removed)
+  GBP_USD: 9,392 rows (49.7% removed)
+  NZD_JPY: 9,482 rows (49.2% removed)
+  NZD_USD: 9,273 rows (50.3% removed)
+  USD_CAD: 9,308 rows (50.1% removed)
+  USD_CHF: 9,224 rows (50.6% removed)
+  USD_JPY: 9,521 rows (49.0% removed)
+
+For ML training: use 9,136 aligned rows
