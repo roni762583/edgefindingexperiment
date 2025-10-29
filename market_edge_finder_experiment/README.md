@@ -150,10 +150,17 @@ This is a **fundamental research experiment** to determine whether statistically
 - Portfolio optimization
 
 **What We ARE Discovering**:
-- Statistical significance of predictions
-- Edge measurement via Sharpe ratios and hit rates
+- Statistical significance of predictions via rigorous Monte Carlo validation
+- Edge measurement through Dr. Howard Bandy's statistical methodology
 - Cross-instrument predictive relationships
-- Temporal structure in FX movements
+- Temporal structure in FX movements that survives stress testing
+
+**Monte Carlo Validation Framework** (per Dr. Howard Bandy):
+- **Bootstrap Sampling**: Test edge robustness across thousands of random data samples
+- **Equity Curve Stress Testing**: Generate Monte Carlo traces of equity scenarios
+- **Statistical Significance**: Measure if edge exceeds random chance with high confidence
+- **Scenario Analysis**: Validate performance across different market regimes and conditions
+- **Reference Implementation**: [new_swt repository](https://github.com/roni762583/new_swt.git) validation container
 
 ### Key Architecture Components
 
@@ -321,7 +328,7 @@ The system generates target labels as **USD-scaled pip movements** for 1-hour fo
 - **Raw targets**: USD values (can range ±$50 to ±$300 per hour)
 - **ML training**: Normalized to [-1,1] range using percentile scaling with rolling window
 - **Statistical analysis**: Focus on prediction accuracy and correlation, not position sizing
-- **Edge measurement**: Sharpe ratio, hit rate, and statistical significance of predictions
+- **Edge measurement**: Sharpe ratio, hit rate, and Monte Carlo validated statistical significance
 
 ### 3. Feature Engineering
 ```bash
@@ -413,6 +420,87 @@ OANDA Data → Feature Engineering → TCNAE (144→120) → LightGBM (120→24)
 - **Update Mechanism**: Real-time context computation
 - **Cross-Instrument Learning**: Shared representations between instruments
 - **Adaptive Teacher Forcing**: Dynamic true/predicted context mixing
+
+---
+
+## Statistical Validation Framework
+
+### Monte Carlo Edge Validation (Dr. Howard Bandy Methodology)
+
+**Fundamental Principle**: A trading edge is only valid if it consistently outperforms random chance across thousands of statistical scenarios. Simple backtesting is insufficient—rigorous Monte Carlo validation is required.
+
+**Implementation Framework** (adapted from [new_swt repository](https://github.com/roni762583/new_swt.git)):
+
+#### Multi-Scenario Bootstrap Stress Testing
+```python
+# 6 different stress test scenarios (per new_swt methodology)
+scenarios = [
+    'original_bootstrap',      # Standard bootstrap with replacement
+    'random_10_drop',         # Random 10% trade/prediction drop
+    'tail_20_drop',          # Remove worst 20% of predictions
+    'oversample_150',        # 150% oversampling
+    'adverse_selection',     # Bias towards losing predictions
+    'early_stop_80'          # Stop at 80% of data
+]
+
+for scenario in scenarios:
+    for i in range(1000):  # 1000 bootstrap samples per scenario
+        sample_data = apply_scenario_sampling(predictions, returns, scenario)
+        sharpe_ratio = calculate_sharpe(sample_data)
+        hit_rate = calculate_hit_rate(sample_data)
+        ic = calculate_information_coefficient(sample_data)
+        results[scenario].append([sharpe_ratio, hit_rate, ic])
+
+# Statistical significance across all scenarios
+confidence_metrics = calculate_confidence_intervals(results, [5, 25, 75, 95])
+```
+
+#### Trajectory-Based Validation
+```python
+# Generate "spaghetti plots" of equity trajectories
+for scenario in stress_scenarios:
+    trajectories = []
+    for sample in range(1000):
+        resampled_predictions = bootstrap_sample(predictions, scenario)
+        trajectory = cumulative_returns(resampled_predictions, actual_returns)
+        trajectories.append(trajectory)
+    
+    # Calculate trajectory statistics
+    median_trajectory = np.median(trajectories, axis=0)
+    percentile_5 = np.percentile(trajectories, 5, axis=0)
+    percentile_95 = np.percentile(trajectories, 95, axis=0)
+    
+    scenario_results[scenario] = {
+        'median': median_trajectory,
+        'confidence_bands': (percentile_5, percentile_95),
+        'final_returns': [traj[-1] for traj in trajectories]
+    }
+```
+
+#### Regime Robustness Testing
+- **Bull Market Performance**: Edge validation during trending periods
+- **Bear Market Performance**: Edge validation during declining periods  
+- **Sideways Market Performance**: Edge validation during ranging periods
+- **High Volatility Periods**: Edge performance during market stress
+- **Cross-Regime Consistency**: Edge persistence across all market conditions
+
+#### Statistical Significance Criteria
+- **Confidence Level**: >95% (p-value <0.05)
+- **Bootstrap Validation**: Edge exceeds random performance in >95% of samples
+- **Monte Carlo Equity**: Actual performance in top 5% of randomized scenarios
+- **Information Coefficient**: >0.05 with statistical significance
+- **Hit Rate**: >52% with 95% confidence intervals excluding 50%
+
+**Reference Implementation**: 
+- Repository: https://github.com/roni762583/new_swt.git
+- Scripts: `bootstrap_monte_carlo.py`, `real_bootstrap_validation.py`, `bootstrap_spaghetti.py`
+- Methodology: Multi-scenario stress testing with trajectory visualization
+- Integration: Monte Carlo validation results will be integrated into edge discovery metrics
+
+**Success Criterion**: An edge is considered **statistically significant** only if it passes ALL Monte Carlo validation tests with 95% confidence. Failure to pass indicates either:
+1. No edge exists (efficient market hypothesis validated)
+2. Edge is too weak to be systematically exploitable
+3. Model overfitting to historical patterns
 
 ---
 

@@ -479,7 +479,9 @@ def on_new_candle(instrument: str, ohlc: Dict):
 - **Regime Robustness**: Predictive power across different market conditions
 - **Cross-Instrument Generalization**: Context tensor improves predictions beyond single-instrument models
 - **Feature Importance**: Clear attribution of edge sources to specific indicators
-- **Monte Carlo Validation**: Edge survives bootstrap sampling and permutation tests
+- **Monte Carlo Validation**: 6-scenario stress testing per new_swt methodology (bootstrap, adverse selection, early stopping, etc.)
+- **Trajectory Analysis**: "Spaghetti plot" validation with confidence bands and percentile analysis
+- **Cross-Scenario Robustness**: Edge persistence across all bootstrap stress scenarios
 
 ### Technical Implementation Metrics
 - **Data Quality**: >99.5% clean data for all 24 instruments
