@@ -160,7 +160,7 @@ Production-grade hybrid ML system combining Temporal Convolutional Autoencoder (
   - **Formula**: `(next_close - current_close) / pip_size × pip_value_usd`
   - **Examples**: EUR_USD 10 pips = +$100, GBP_JPY 12 pips = +$117.60
   - **Dynamic pip values**: Real-time calculation via OANDA API for cross-pairs
-  - **Scaling decision**: Raw USD values vs [-1,1] normalization for ML training
+  - **Target scaling**: Normalize to [-1,1] using percentile scaling for stable ML training
 - [ ] **Model Training**: LightGBM with cross-validation
 - [ ] **Hyperparameter Optimization**: Optuna-based tuning
 

@@ -302,8 +302,9 @@ The system generates target labels as **USD-scaled pip movements** for 1-hour fo
 
 **Target Scaling for ML:**
 - **Raw targets**: USD values (can range ±$50 to ±$300 per hour)
-- **Scaling question**: Should targets be normalized to [-1,1] range for ML training?
-- **Current status**: Implementation ready, scaling method TBD
+- **ML training**: Normalized to [-1,1] range using percentile scaling with rolling window
+- **Inference**: Convert predictions back to USD for economic position sizing
+- **Benefit**: Ensures stable training across all 24 instruments with different volatilities
 
 ### 3. Feature Engineering
 ```bash
