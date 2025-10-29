@@ -211,14 +211,20 @@ DEVIATIONS: None [or list any]
 
 ## Project Overview
 
-This is a research project for developing a hybrid machine learning system that predicts 1-hour FX returns using a Temporal Convolutional Autoencoder (TCNAE) combined with LightGBM. The system focuses on edge discovery across 20 FX pairs using causal features and cross-instrument context.
+This is a research project for developing a hybrid machine learning system that predicts 1-hour FX returns using a Temporal Convolutional Autoencoder (TCNAE) combined with LightGBM. The system focuses on edge discovery across 24 FX pairs using causal features and cross-instrument context.
 
 ## Key Architecture Components
 
-- **TCNAE (Temporal Convolutional Autoencoder)**: Compresses 4-hour sequences of features into 100-dimensional latent representations
-- **LightGBM/GBDT**: Maps latent features to 20 instrument predictions 
+- **TCNAE (Temporal Convolutional Autoencoder)**: Compresses 4-hour sequences of 5-dimensional features into 100-dimensional latent representations
+- **LightGBM/GBDT**: Maps latent features to 24 instrument predictions 
 - **Context Tensor**: Maintains cross-instrument awareness and enables adaptive teacher forcing
-- **Feature Engineering**: 4 causal indicators per instrument (slope_high, slope_low, volatility, direction)
+- **Feature Engineering**: 5 causal indicators per instrument for edge finding:
+  - **slope_high**: Raw ASI/bar slope values for swing highs (interpretable)
+  - **slope_low**: Raw ASI/bar slope values for swing lows (interpretable)  
+  - **volatility**: ATR percentile scaled [0,1] (cross-instrument comparable)
+  - **direction**: ADX percentile scaled [0,1] (trend strength)
+  - **price_change**: Log returns percentile scaled [0,1] (target feature)
+- **CSI (Reference Only)**: Wilder's Commodity Selection Index (CSI = ADX × ATR × Volume_Proxy) calculated for market ranking reference but **SHALL NOT be used in the edge finding system**
 - **16-State Market Regime Framework**: Captures volatility×direction and swing structure patterns
 
 ## Planned Directory Structure
@@ -261,9 +267,9 @@ market_edge_finder_experiment/
 
 **Production Incremental Processing:**
 - **Process any FX CSV**: `python scripts/process_any_fx_csv.py AUD_CHF_3years_H1.csv -o results.csv`
+- **Process all 24 instruments**: `python scripts/process_all_instruments.py --workers 4`
 - **Batch processing**: `python scripts/process_any_fx_csv.py EUR_USD_3years_H1.csv -b 2000`
 - **Row-by-row demo**: `python scripts/demo_csv_row_by_row.py`
-- **Production summary**: `python scripts/production_ready_summary.py`
 
 **Visualization & Testing:**
 - **Complete graph**: `python scripts/graph_incremental_practical_with_dots.py`
@@ -271,7 +277,8 @@ market_edge_finder_experiment/
 - **Dynamic pip values**: `python scripts/test_usd_pairs_dynamic_pips.py`
 
 **Data Download & Processing:**
-- **Primary Download**: `python download_real_data_v20.py` (saves to CSV first)
+- **Download all 24 instruments**: `python download_real_data_v20.py` (saves to CSV first)
+- **Download missing 4 only**: `python scripts/download_missing_instruments.py`
 - Data preprocessing: `python scripts/run_preprocessing.py`
 - Feature engineering: `python scripts/run_complete_data_pipeline.py`
 
@@ -372,6 +379,35 @@ The project exists as a detailed specification document (`edge-finding-experimen
 3. **ARCHIVE PERIODICALLY** - Move old notes to `CLAUDE_ARCHIVE_[DATE].md` when this section exceeds 100 lines
 4. **MOST RECENT FIRST** - Add new entries at the top of this section
 <!-- 🚨 ADD NEW NOTES BELOW THIS LINE 🚨-->
+
+### [2025-10-28 11:00] CSI IMPLEMENTATION & 24 INSTRUMENT UPGRADE
+
+#### 🔧 CSI (COMMODITY SELECTION INDEX) ADDED - REFERENCE ONLY
+- **Implementation**: Proper Wilder CSI formula: `CSI = ADX × ATR × (Volume_Proxy / 100)`
+- **Volume Proxy**: `|Close - Open| × 1000` (price velocity for FX markets without volume)
+- **Purpose**: Market selection ranking tool for instrument activity comparison
+- **⚠️ CRITICAL**: CSI is for **REFERENCE ONLY** and **SHALL NOT be used in edge finding system**
+- **Coverage**: 100% across all instruments with proper scaling (0-2767 range)
+
+#### 📈 24 INSTRUMENT UPGRADE COMPLETE
+- **Expanded Coverage**: Updated from 20 to 24 FX pairs (added EUR_CAD, EUR_NZD, GBP_CAD, GBP_NZD)
+- **Download Scripts**: Updated to include missing 4 instruments
+- **Configuration**: Updated instruments.py with all 24 pairs + spreads + currency groups
+- **Processing**: Multi-instrument coordinator handles all 24 pairs efficiently
+
+#### 🔧 DATA QUALITY IMPROVEMENTS
+- **Row Trimming**: Added function to remove incomplete leading rows where indicators lack sufficient data
+- **Clean Output**: Ensures 100% indicator coverage after trimming (removes ~11 initial rows)
+- **First Complete Row**: Automatically finds first row with all core indicators present
+- **Production Ready**: All output files now have complete, clean indicator data
+
+#### 📁 FILES UPDATED
+- `download_real_data_v20.py`: Added 4 missing instruments
+- `scripts/download_missing_instruments.py`: New script for downloading only missing pairs
+- `configs/instruments.py`: Updated to 24 instruments with complete configuration
+- `features/practical_incremental.py`: Proper Wilder CSI implementation
+- `scripts/process_any_fx_csv.py`: Added trim_incomplete_leading_rows() function
+- `CLAUDE.md`: Updated documentation to reflect CSI reference-only status
 
 ### [2025-10-27 14:15] INCREMENTAL PROCESSING BREAKTHROUGH - 99.94% CORRELATION ACHIEVED
 
