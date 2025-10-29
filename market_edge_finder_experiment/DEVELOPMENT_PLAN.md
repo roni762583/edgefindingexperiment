@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Production-grade hybrid ML system combining Temporal Convolutional Autoencoder (TCNAE) with LightGBM for 1-hour FX return prediction across 24 currency pairs with cross-instrument context awareness.
+Research experiment to discover statistically significant edges in 1-hour FX movements using TCNAE + LightGBM across 24 currency pairs. Core question: does predictable structure exist that can be systematically exploited, or do markets remain efficient at this timeframe?
 
 ## Architecture Components
 
@@ -467,17 +467,24 @@ def on_new_candle(instrument: str, ohlc: Dict):
 
 ## Success Criteria
 
-### Technical Metrics
-- **Sharpe Ratio**: >1.5 net of transaction costs
-- **Maximum Drawdown**: <15%
-- **Precision@10**: >60% for top 10% predictions
-- **System Uptime**: >99.9%
-- **Test Coverage**: >90%
+### Edge Discovery Metrics
+- **Statistical Significance**: p-value <0.05 for prediction accuracy
+- **Information Coefficient**: IC >0.05 (correlation between predictions and actual returns)
+- **Hit Rate**: >52% directional accuracy (statistically significant above random)
+- **Sharpe Ratio**: >1.0 on prediction-based portfolio (no transaction costs, pure edge measurement)
+- **Cross-Validation Consistency**: Edge persists across all time-based splits
 
-### Operational Metrics
-- **Data Availability**: >99.5% for all 24 instruments
-- **Model Performance**: Consistent across market regimes
-- **Code Quality**: All quality gates passing
-- **Documentation**: Complete operational runbook
+### Research Validation Metrics
+- **Out-of-Sample Performance**: Edge maintained on completely unseen data
+- **Regime Robustness**: Predictive power across different market conditions
+- **Cross-Instrument Generalization**: Context tensor improves predictions beyond single-instrument models
+- **Feature Importance**: Clear attribution of edge sources to specific indicators
+- **Monte Carlo Validation**: Edge survives bootstrap sampling and permutation tests
 
-This development plan ensures a production-grade system with no shortcuts, comprehensive testing, and robust architecture suitable for live trading with real capital.
+### Technical Implementation Metrics
+- **Data Quality**: >99.5% clean data for all 24 instruments
+- **Model Convergence**: Stable training across multiple runs
+- **Code Quality**: >90% test coverage, production-ready implementation
+- **Reproducibility**: Identical results across different environments
+
+**Core Success Definition**: Discovery of measurable, statistically significant predictive edge in 1-hour FX movements that can be systematically captured through ML techniques. If no edge exists, the experiment successfully validates efficient market hypothesis for this timeframe.

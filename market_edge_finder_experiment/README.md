@@ -1,6 +1,6 @@
 # Market Edge Finder Experiment - Complete Documentation
 
-**Hybrid machine learning system for 1-hour FX return prediction using TCNAE + LightGBM across 24 currency pairs with cross-instrument context awareness.**
+**Research experiment to discover statistically significant edges in 1-hour FX movements using TCNAE + LightGBM across 24 currency pairs. The fundamental question: does predictable structure exist in this timeframe that can be systematically exploited?**
 
 ---
 
@@ -136,7 +136,24 @@ python scripts/download_all_fx_data.py --validate-only
 ## Project Overview
 
 ### Research Objective
-This is a research project for developing a hybrid machine learning system that predicts 1-hour FX returns using a Temporal Convolutional Autoencoder (TCNAE) combined with LightGBM. The system focuses on edge discovery across 24 FX pairs using causal features and cross-instrument context.
+
+This is a **fundamental research experiment** to determine whether statistically significant edges exist in 1-hour FX movements. 
+
+**Core Premise**: No matter how sophisticated the trading system—whether reinforcement learning, complex position sizing, or advanced execution algorithms—all strategies are of limited value unless there is a clear, measurable edge to exploit.
+
+**Foundational Question**: **Can we discover predictable patterns in 1-hour timeframes across 24 FX pairs using state-of-the-art ML techniques?**
+
+**What We're NOT Building**:
+- Trading systems with position sizing
+- Risk management frameworks
+- Execution algorithms
+- Portfolio optimization
+
+**What We ARE Discovering**:
+- Statistical significance of predictions
+- Edge measurement via Sharpe ratios and hit rates
+- Cross-instrument predictive relationships
+- Temporal structure in FX movements
 
 ### Key Architecture Components
 
@@ -300,11 +317,11 @@ The system generates target labels as **USD-scaled pip movements** for 1-hour fo
 - **GBP_JPY**: ~$8.00-12.00/pip (calculated via GBP_USD rate)
 - **Cross pairs**: Dynamic calculation using current rates
 
-**Target Scaling for ML:**
+**Target Scaling for Edge Discovery:**
 - **Raw targets**: USD values (can range ±$50 to ±$300 per hour)
 - **ML training**: Normalized to [-1,1] range using percentile scaling with rolling window
-- **Inference**: Convert predictions back to USD for economic position sizing
-- **Benefit**: Ensures stable training across all 24 instruments with different volatilities
+- **Statistical analysis**: Focus on prediction accuracy and correlation, not position sizing
+- **Edge measurement**: Sharpe ratio, hit rate, and statistical significance of predictions
 
 ### 3. Feature Engineering
 ```bash
