@@ -273,7 +273,39 @@ ls -la data/raw/*.csv | wc -l  # Should show 24 files
 wc -l data/raw/*.csv           # Should show ~26,280 lines each
 ```
 
-### 2. Feature Engineering
+### 2. Target Label Generation
+
+**USD-Scaled Pip Targets for ML Prediction:**
+
+The system generates target labels as **USD-scaled pip movements** for 1-hour forward prediction:
+
+```python
+# Example: EUR_USD movement
+# Current close: 1.1111, Next hour close: 1.1121  
+# Price diff: 0.0010 = 10 pips × $10/pip = +$100 target
+
+# Example: GBP_JPY movement  
+# Price diff: 0.12 = 12 pips × $9.80/pip = +$117.60 target
+```
+
+**Implementation Process:**
+1. **Price Difference**: `next_close - current_close`
+2. **Convert to Pips**: `price_diff / pip_size` (0.0001 for majors, 0.01 for JPY)
+3. **USD Scaling**: `pip_movement × pip_value_usd` (dynamic via OANDA API)
+4. **Economic Comparability**: All pairs normalized to USD per 100k lot
+
+**Dynamic Pip Values:**
+- **EUR_USD**: ~$10.00/pip (quote currency = USD)
+- **USD_JPY**: ~$7.00-9.00/pip (varies with USD/JPY rate)  
+- **GBP_JPY**: ~$8.00-12.00/pip (calculated via GBP_USD rate)
+- **Cross pairs**: Dynamic calculation using current rates
+
+**Target Scaling for ML:**
+- **Raw targets**: USD values (can range ±$50 to ±$300 per hour)
+- **Scaling question**: Should targets be normalized to [-1,1] range for ML training?
+- **Current status**: Implementation ready, scaling method TBD
+
+### 3. Feature Engineering
 ```bash
 # Unified feature generation (recommended)
 python3 scripts/generate_features.py --sample
