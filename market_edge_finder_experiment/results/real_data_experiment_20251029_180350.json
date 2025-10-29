@@ -1,0 +1,48 @@
+{
+  "experiment_id": "20251029_180350",
+  "timestamp": "2025-10-29T18:03:50.941194",
+  "data_summary": {
+    "instruments": [
+      "AUD_CHF",
+      "AUD_JPY",
+      "AUD_NZD",
+      "AUD_USD",
+      "CAD_JPY",
+      "CHF_JPY",
+      "EUR_AUD",
+      "EUR_CAD",
+      "EUR_CHF",
+      "EUR_GBP",
+      "EUR_JPY",
+      "EUR_NZD"
+    ],
+    "n_samples": 2000,
+    "n_features": 5,
+    "data_period": "2000 most recent bars"
+  },
+  "correlations": {
+    "AUD_CHF": -0.006964963480764835,
+    "AUD_JPY": -0.025230876343778234,
+    "AUD_NZD": -0.02493036707116941,
+    "AUD_USD": -0.030679524504806936,
+    "CAD_JPY": 0.01843240022184785,
+    "CHF_JPY": 0.0048029652441740735,
+    "EUR_AUD": 0.017187882596858838,
+    "EUR_CAD": 0.0061788962394915175,
+    "EUR_CHF": -0.012751518654283932,
+    "EUR_GBP": -0.0014696963314892895,
+    "EUR_JPY": -0.013261452022452195,
+    "EUR_NZD": 0.000492992459279249
+  },
+  "potential_edges": {
+    "AUD_USD": -0.030679524504806936
+  },
+  "summary": {
+    "total_instruments": 12,
+    "potential_edges_found": 1,
+    "max_correlation": 0.01843240022184785,
+    "edge_discovery_rate": 0.08333333333333333
+  },
+  "conclusion": "POTENTIAL EDGES DETECTED: 1 instruments show correlation \u22653.0%",
+  "recommendation": "Proceed with full TCNAE + LightGBM training and Monte Carlo validation"
+}

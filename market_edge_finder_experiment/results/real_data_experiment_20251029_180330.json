@@ -1,0 +1,32 @@
+{
+  "experiment_id": "20251029_180330",
+  "timestamp": "2025-10-29T18:03:30.710950",
+  "data_summary": {
+    "instruments": [
+      "AUD_CHF",
+      "AUD_JPY",
+      "AUD_NZD",
+      "AUD_USD",
+      "CAD_JPY"
+    ],
+    "n_samples": 2000,
+    "n_features": 5,
+    "data_period": "2000 most recent bars"
+  },
+  "correlations": {
+    "AUD_CHF": -0.006964963480764835,
+    "AUD_JPY": -0.025230876343778234,
+    "AUD_NZD": -0.02493036707116941,
+    "AUD_USD": -0.030679524504806936,
+    "CAD_JPY": 0.01843240022184785
+  },
+  "potential_edges": {},
+  "summary": {
+    "total_instruments": 5,
+    "potential_edges_found": 0,
+    "max_correlation": 0.01843240022184785,
+    "edge_discovery_rate": 0.0
+  },
+  "conclusion": "NO SIGNIFICANT EDGES: No correlations exceed 5.0% threshold",
+  "recommendation": "Consider feature engineering improvements or alternative approaches"
+}

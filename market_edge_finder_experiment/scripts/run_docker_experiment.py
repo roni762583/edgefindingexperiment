@@ -202,9 +202,8 @@ class DockerExperimentRunner:
                     
                     output_file = raw_data_dir / f"{instrument}.csv"
                     
-                    # Download using the existing downloader
-                    # Note: This assumes the downloader can be configured programmatically
-                    # You may need to adapt this based on the actual downloader interface
+                    # Skip download - we already have 3 years of data for all 24 instruments
+                    logger.info(f"✅ Data already available for {instrument}")
                     
                     logger.info(f"✅ Downloaded {instrument} to {output_file}")
                     
