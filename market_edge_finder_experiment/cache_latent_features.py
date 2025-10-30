@@ -100,6 +100,10 @@ class LatentFeatureCache:
                     sequences = batch
                     batch_targets = None
                 
+                # Handle both tensor and list cases for sequences
+                if isinstance(sequences, list):
+                    sequences = torch.stack(sequences)
+                
                 # Move to device
                 sequences = sequences.to(device)
                 

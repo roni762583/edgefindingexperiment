@@ -158,12 +158,24 @@ class OptimizedMLExperiment:
         # Actually train TCNAE autoencoder
         logger.info("🔄 Training TCNAE autoencoder...")
         
-        # Create train/validation split
-        split_idx = int(0.8 * len(features))
-        train_features = features[:split_idx]
-        val_features = features[split_idx:]
-        train_targets = targets[:split_idx] 
-        val_targets = targets[split_idx:]
+        # Create proper temporal train/validation/test splits (70/15/15)
+        # CRITICAL: Use temporal splits to respect time series nature
+        train_end = int(0.7 * len(features))     # 70% earliest data for training
+        val_end = int(0.85 * len(features))      # 15% middle data for validation
+        # Remaining 15% is held-out test set (most recent data - truly unseen)
+        
+        train_features = features[:train_end]
+        val_features = features[train_end:val_end]
+        test_features = features[val_end:]       # Unseen test data
+        
+        train_targets = targets[:train_end] 
+        val_targets = targets[train_end:val_end]
+        test_targets = targets[val_end:]         # Unseen test targets
+        
+        logger.info(f"📊 Temporal data splits:")
+        logger.info(f"   Training: {len(train_features)} samples (70%) - Earliest data")
+        logger.info(f"   Validation: {len(val_features)} samples (15%) - Middle period") 
+        logger.info(f"   Test: {len(test_features)} samples (15%) - Most recent (unseen)")
         
         # Create datasets and data loaders
         from training.basic_trainer import FeatureTargetDataset
@@ -178,8 +190,13 @@ class OptimizedMLExperiment:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         trainer = TCNAETrainer(tcnae_model, device=device)
         
-        # Training loop (simplified for speed)
-        num_epochs = 10  # Reduced for demonstration
+        # Full production training with early stopping
+        num_epochs = 100  # Full training epochs
+        early_stopping_patience = 15
+        best_val_loss = float('inf')
+        patience_counter = 0
+        
+        logger.info(f"🎯 Training TCNAE for up to {num_epochs} epochs with early stopping (patience={early_stopping_patience})")
         
         for epoch in range(num_epochs):
             # Training phase
@@ -189,32 +206,65 @@ class OptimizedMLExperiment:
             val_metrics = trainer.validate(val_loader)
             
             # Learning rate scheduling
-            trainer.scheduler.step(val_metrics['val_loss'])
+            trainer.scheduler.step(val_metrics['total_loss'])
             
-            if epoch % 2 == 0:  # Log every 2 epochs
+            # Early stopping logic
+            current_val_loss = val_metrics['total_loss']
+            if current_val_loss < best_val_loss:
+                best_val_loss = current_val_loss
+                patience_counter = 0
+                # Save best model (optional)
+                logger.debug(f"New best validation loss: {best_val_loss:.4f}")
+            else:
+                patience_counter += 1
+            
+            # Log progress every 5 epochs
+            if epoch % 5 == 0 or patience_counter == 0:
                 logger.info(f"Epoch {epoch+1}/{num_epochs}: "
-                          f"Train Loss={train_metrics['train_loss']:.4f}, "
-                          f"Val Loss={val_metrics['val_loss']:.4f}")
+                          f"Train Loss={train_metrics['total_loss']:.4f}, "
+                          f"Val Loss={current_val_loss:.4f}, "
+                          f"Best Val Loss={best_val_loss:.4f}, "
+                          f"Patience={patience_counter}/{early_stopping_patience}")
+            
+            # Early stopping check
+            if patience_counter >= early_stopping_patience:
+                logger.info(f"🛑 Early stopping triggered at epoch {epoch+1}")
+                logger.info(f"Best validation loss: {best_val_loss:.4f}")
+                break
         
-        logger.info(f"✅ TCNAE training completed ({num_epochs} epochs)")
+        final_epoch = epoch + 1
+        logger.info(f"✅ TCNAE training completed ({final_epoch} epochs)")
+        logger.info(f"📊 Final metrics: Best Val Loss={best_val_loss:.4f}, "
+                   f"Final Train Loss={train_metrics['total_loss']:.4f}")
         
-        # Extract and cache latent features
+        # Extract and cache latent features for ALL data (train/val/test)
         logger.info("🗄️  Extracting and caching latent features...")
         
         cache_name = f"experiment_{self.experiment_id}"
         cache_file = self.cache_system.extract_and_cache_latents(
             tcnae_model=tcnae_model,
-            features=features,
-            targets=targets,
+            features=features,  # Complete dataset
+            targets=targets,    # Complete targets
             instruments=instruments,
             sequence_length=tcnae_config.sequence_length,
             batch_size=64,
             cache_name=cache_name
         )
         
-        logger.info(f"✅ Stage 1 completed: Latents cached as '{cache_name}'")
+        # Also save the temporal split indices for later stages
+        split_info = {
+            'train_end': train_end,
+            'val_end': val_end,
+            'train_samples': len(train_features),
+            'val_samples': len(val_features), 
+            'test_samples': len(test_features),
+            'split_type': 'temporal_70_15_15'
+        }
         
-        return cache_name
+        logger.info(f"✅ Stage 1 completed: Latents cached as '{cache_name}'")
+        logger.info(f"📊 Split info: {split_info['train_samples']} train, {split_info['val_samples']} val, {split_info['test_samples']} test")
+        
+        return cache_name, split_info
     
     def stage_2_lightgbm_training(self, cache_name: str) -> MultiOutputGBDT:
         """
@@ -370,7 +420,7 @@ class OptimizedMLExperiment:
             features, targets, instruments = self.load_clean_data()
             
             # Stage 1: TCNAE pretraining + caching
-            cache_name = self.stage_1_tcnae_pretraining_and_caching(features, targets, instruments)
+            cache_name, split_info = self.stage_1_tcnae_pretraining_and_caching(features, targets, instruments)
             
             # Stage 2: LightGBM training (using cached latents)
             gbdt_model = self.stage_2_lightgbm_training(cache_name)
