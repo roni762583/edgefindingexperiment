@@ -49,8 +49,8 @@ class EdgeDiscoveryEvaluator:
         self.min_sample_size = self.evaluation_config.get('min_sample_size', 2000)
         self.confidence_level = self.evaluation_config.get('confidence_level', 0.95)
         
-        # Initialize Monte Carlo validator
-        self.monte_carlo_validator = EdgeMonteCarloValidator(config)
+        # Monte Carlo validator will be initialized when we have prediction data
+        self.monte_carlo_validator = None
         
         # Results storage
         self.evaluation_results_: Dict[str, Any] = {}

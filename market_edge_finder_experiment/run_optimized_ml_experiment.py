@@ -21,6 +21,8 @@ from datetime import datetime
 import json
 import pickle
 from typing import Tuple, List, Dict
+import torch
+import torch.utils.data
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent))
@@ -98,8 +100,17 @@ class OptimizedMLExperiment:
             
             logger.debug(f"Loaded {instrument}: {instrument_features.shape}")
         
+        # Find minimum sample size to align all instruments
+        min_samples = min(data.shape[0] for data in feature_data)
+        logger.info(f"Aligning all instruments to {min_samples} samples")
+        
+        # Align all instruments to minimum sample size
+        aligned_data = []
+        for data in feature_data:
+            aligned_data.append(data[:min_samples])
+        
         # Stack into tensor format [n_samples, n_instruments, n_features]
-        features = np.stack(feature_data, axis=1)
+        features = np.stack(aligned_data, axis=1)
         
         # Generate targets (1-hour ahead returns)
         targets = np.zeros((len(features), len(instruments)))
@@ -144,16 +155,48 @@ class OptimizedMLExperiment:
         # Initialize TCNAE model
         tcnae_model = TCNAE(tcnae_config)
         
-        # Simulate TCNAE training
+        # Actually train TCNAE autoencoder
         logger.info("🔄 Training TCNAE autoencoder...")
-        logger.info("   (Simulated - in full implementation, run actual TCNAE training)")
         
-        # In full implementation:
-        # 1. Create train/val data loaders
-        # 2. Train TCNAE with reconstruction loss
-        # 3. Save trained model
+        # Create train/validation split
+        split_idx = int(0.8 * len(features))
+        train_features = features[:split_idx]
+        val_features = features[split_idx:]
+        train_targets = targets[:split_idx] 
+        val_targets = targets[split_idx:]
         
-        # For demonstration, we'll use the untrained model to show the caching process
+        # Create datasets and data loaders
+        from training.basic_trainer import FeatureTargetDataset
+        train_dataset = FeatureTargetDataset(train_features, train_targets, tcnae_config.sequence_length)
+        val_dataset = FeatureTargetDataset(val_features, val_targets, tcnae_config.sequence_length)
+        
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+        val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=False)
+        
+        # Initialize trainer and train model
+        from models.tcnae import TCNAETrainer
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        trainer = TCNAETrainer(tcnae_model, device=device)
+        
+        # Training loop (simplified for speed)
+        num_epochs = 10  # Reduced for demonstration
+        
+        for epoch in range(num_epochs):
+            # Training phase
+            train_metrics = trainer.train_epoch(train_loader)
+            
+            # Validation phase
+            val_metrics = trainer.validate(val_loader)
+            
+            # Learning rate scheduling
+            trainer.scheduler.step(val_metrics['val_loss'])
+            
+            if epoch % 2 == 0:  # Log every 2 epochs
+                logger.info(f"Epoch {epoch+1}/{num_epochs}: "
+                          f"Train Loss={train_metrics['train_loss']:.4f}, "
+                          f"Val Loss={val_metrics['val_loss']:.4f}")
+        
+        logger.info(f"✅ TCNAE training completed ({num_epochs} epochs)")
         
         # Extract and cache latent features
         logger.info("🗄️  Extracting and caching latent features...")

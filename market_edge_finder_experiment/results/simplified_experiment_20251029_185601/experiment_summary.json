@@ -1,0 +1,72 @@
+{
+  "experiment_id": "20251029_185601",
+  "timestamp": "2025-10-29T18:56:01.701480",
+  "dataset_info": {
+    "total_samples": 9136,
+    "num_instruments": 24,
+    "num_features": 5,
+    "instruments": [
+      "AUD_CHF",
+      "AUD_JPY",
+      "AUD_NZD",
+      "AUD_USD",
+      "CAD_JPY",
+      "CHF_JPY",
+      "EUR_AUD",
+      "EUR_CAD",
+      "EUR_CHF",
+      "EUR_GBP",
+      "EUR_JPY",
+      "EUR_NZD",
+      "EUR_USD",
+      "GBP_AUD",
+      "GBP_CAD",
+      "GBP_CHF",
+      "GBP_JPY",
+      "GBP_NZD",
+      "GBP_USD",
+      "NZD_JPY",
+      "NZD_USD",
+      "USD_CAD",
+      "USD_CHF",
+      "USD_JPY"
+    ],
+    "time_coverage_days": 380.6666666666667,
+    "time_coverage_years": 1.0429223744292238
+  },
+  "data_quality": {
+    "features_shape": [
+      9136,
+      24,
+      5
+    ],
+    "targets_shape": [
+      9136,
+      24
+    ],
+    "feature_names": [
+      "slope_high",
+      "slope_low",
+      "volatility",
+      "direction",
+      "price_change"
+    ]
+  },
+  "split_info": {
+    "train_samples": 6395,
+    "val_samples": 1370,
+    "test_samples": 1371,
+    "total_samples": 9136,
+    "train_ratio": 0.7,
+    "val_ratio": 0.15,
+    "split_method": "temporal"
+  },
+  "readiness_status": {
+    "data_loaded": true,
+    "quality_verified": true,
+    "splits_created": true,
+    "ready_for_tcnae": true,
+    "ready_for_lightgbm": true,
+    "ready_for_4_stage_experiment": true
+  }
+}

@@ -987,6 +987,66 @@ MIT License - See LICENSE file for details
 
 ---
 
+## Future Work
+
+### Confidence Prediction Enhancement
+
+**Objective**: Add explicit confidence prediction to the current experiment for practical trading applications.
+
+#### Current Confidence Mechanisms (Already Built-in)
+- **LightGBM feature importance**: Shows which features drive predictions
+- **Cross-instrument context**: 24×5 tensor provides diversification confidence
+- **Monte Carlo validation**: Statistical significance testing (Dr. Howard Bandy method)
+- **Correlation thresholds**: Only edges ≥3% correlation considered actionable
+
+#### Proposed Confidence Enhancements
+
+##### 1. Ensemble-Based Confidence
+```python
+# Multiple models vote on prediction + confidence
+ensemble_predictions = []
+for model in trained_models:
+    pred, confidence = model.predict_with_confidence(features)
+    ensemble_predictions.append((pred, confidence))
+
+# Final prediction with ensemble confidence
+final_pred = weighted_average(predictions)
+confidence_score = ensemble_agreement_metric(ensemble_predictions)
+```
+
+##### 2. Quantile Regression for Prediction Intervals
+```python
+# Train LightGBM for prediction intervals (10th, 50th, 90th percentiles)
+lgb_lower = lgb.train(params, train_data, objective='quantile', alpha=0.1)
+lgb_median = lgb.train(params, train_data, objective='quantile', alpha=0.5) 
+lgb_upper = lgb.train(params, train_data, objective='quantile', alpha=0.9)
+
+# Confidence = interval width
+confidence = (upper_pred - lower_pred) / median_pred
+```
+
+##### 3. Context-Aware Confidence
+```python
+# Confidence varies by market regime and cross-instrument agreement
+regime_confidence = regime_stability_score(market_regime)
+cross_instrument_confidence = correlation_strength(context_tensor)
+final_confidence = regime_confidence * cross_instrument_confidence * model_confidence
+```
+
+#### Implementation Requirements
+- **Modified GBDT architecture** for uncertainty quantification
+- **Ensemble training** (3-5 models instead of 1)
+- **Confidence calibration** on validation set
+- **Regime-aware confidence scaling**
+
+#### Benefits for Trading Applications
+- **Risk-adjusted position sizing**: Scale positions based on prediction confidence
+- **Trade filtering**: Only execute trades above confidence threshold
+- **Portfolio optimization**: Weight instruments by prediction confidence
+- **Real-time risk management**: Dynamic stop-loss adjustment based on confidence
+
+---
+
 ## Support
 
 For issues and support, please use the GitHub issue tracker.
