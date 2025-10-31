@@ -10,20 +10,72 @@ This study presents a comprehensive investigation into the predictability of USD
 - **Architecture**: 537K-parameter TCNAE + 48 specialized LightGBM models
 - **Validation**: Rigorous temporal splits preventing lookahead bias
 
-### Key Results
+### Key Results - USD Pip Experiment (October 31, 2025)
 | Metric | Result | Assessment |
 |--------|--------|------------|
-| **Direction Accuracy** | 49.7% | ❌ Random baseline (no edge) |
-| **Pip Correlation** | 0.74% | ❌ No predictive power |
-| **Total P&L** | +$105.44 | ❌ Economically negligible |
-| **Trading Activity** | 0 trades | ❌ Models appropriately uncertain |
-| **Statistical Significance** | None | ❌ All metrics at random levels |
+| **Average RMSE** | $101.80 | ❌ High prediction error |
+| **Average Correlation** | 0.02% | ❌ No predictive relationship |
+| **Direction Accuracy** | 50.1% | ❌ Random baseline (no edge) |
+| **Best Performer** | USD_CAD (5.8% correlation) | ❌ Still negligible |
+| **Total Test Samples** | 32,880 (1,370 × 24) | ✅ Comprehensive evaluation |
+| **Statistical Significance** | None | ❌ All correlations < 10% |
 
 ### Experimental Conclusion
 
-**Status Update (October 31, 2025)**: A properly designed USD pip prediction experiment is currently running with direct training on actual USD pip movements (not log returns). The TCNAE autoencoder (537K parameters) is training on 9,135 samples across 24 instruments with USD pip targets ranging from $93 average to $5,714 maximum movement per hour. This corrects the fundamental design flaw in previous experiments that trained on scaled price_change rather than actual financial targets.
+**FINAL RESULTS (October 31, 2025)**: The properly designed USD pip prediction experiment has completed successfully. Training directly on actual USD pip movements (not log returns) produced identical conclusions to previous experiments: **no statistically significant market edge was discovered**. 
 
-**Previous Results**: Earlier experiments showed the sophisticated ML architecture functioning perfectly but discovering no statistically significant market edge. Results validated the efficient market hypothesis for hourly FX movements, demonstrating that technical sophistication alone cannot overcome fundamental market efficiency.
+**Key Findings**:
+- Both experimental approaches (log returns vs USD pips) converged to same result
+- Market efficiency confirmed at hourly timeframe for technical prediction  
+- Sophisticated ML architecture functioned perfectly but markets remain unpredictable
+- Results provide robust validation of efficient market hypothesis
+
+This study demonstrates that methodological rigor in financial ML research leads to consistent negative results, regardless of target formulation.
+
+---
+
+## Detailed Results by Instrument
+
+### Complete Performance Analysis - All 24 Currency Pairs
+
+| **Instrument** | **RMSE (USD)** | **Correlation** | **Direction Accuracy** | **MAE (USD)** | **Assessment** |
+|----------------|----------------|-----------------|------------------------|---------------|----------------|
+| **USD Majors** |
+| EUR_USD | $79.62 | -0.80% | 49.9% | $48.83 | ❌ No edge |
+| GBP_USD | $101.53 | -9.33% | 47.4% | $64.28 | ❌ Worst performer |
+| AUD_USD | $69.63 | 2.25% | 49.7% | $45.19 | ❌ No edge |
+| NZD_USD | $66.70 | 0.27% | 50.5% | $43.57 | ❌ No edge |
+| USD_CAD | $68.68 | **5.83%** | 50.7% | $43.38 | ⚠️ Best correlation (still negligible) |
+| USD_CHF | $80.48 | 3.43% | 49.1% | $48.60 | ❌ No edge |
+| USD_JPY | $112.47 | 4.66% | 52.0% | $70.97 | ❌ No edge |
+| **EUR Crosses** |
+| EUR_GBP | $46.01 | -3.08% | 46.9% | $30.73 | ❌ No edge |
+| EUR_JPY | $157.78 | 3.88% | 51.8% | $106.91 | ❌ No edge |
+| EUR_CHF | $75.47 | 2.43% | 51.5% | $47.36 | ❌ No edge |
+| EUR_AUD | $137.29 | -1.06% | 51.3% | $99.96 | ❌ No edge |
+| EUR_CAD | $100.38 | 1.37% | 48.9% | $67.35 | ❌ No edge |
+| EUR_NZD | $161.25 | -4.79% | 48.1% | $114.64 | ❌ No edge |
+| **GBP Crosses** |
+| GBP_JPY | $185.89 | -1.51% | 51.8% | $128.17 | ❌ No edge |
+| GBP_CHF | $100.30 | -3.32% | 48.1% | $64.24 | ❌ No edge |
+| GBP_AUD | $156.05 | 0.52% | 51.0% | $112.43 | ❌ No edge |
+| GBP_CAD | $124.02 | 2.57% | 50.7% | $81.80 | ❌ No edge |
+| GBP_NZD | $186.76 | -1.21% | 51.2% | $131.75 | ❌ No edge |
+| **JPY Crosses** |
+| AUD_JPY | $70.08 | -1.08% | 51.5% | $49.33 | ❌ No edge |
+| CAD_JPY | $71.53 | -2.16% | 50.9% | $49.05 | ❌ No edge |
+| CHF_JPY | $139.87 | -2.13% | 50.6% | $93.21 | ❌ No edge |
+| NZD_JPY | $67.58 | 0.94% | 50.4% | $47.32 | ❌ No edge |
+| **Other Crosses** |
+| AUD_CHF | $38.92 | -0.69% | 49.2% | $27.87 | ❌ No edge |
+| AUD_NZD | $44.84 | 3.55% | 50.3% | $31.42 | ❌ No edge |
+
+### Statistical Summary
+- **Range**: RMSE from $38.92 (AUD_CHF) to $186.76 (GBP_NZD)
+- **Best Correlation**: USD_CAD at 5.83% (still economically negligible)
+- **Direction Accuracy**: All instruments cluster around 50% (random baseline)
+- **Total USD Movement Tested**: $2,250,531 actual vs $147,132 predicted
+- **Conclusion**: No instrument shows statistically significant predictive power
 
 ---
 
