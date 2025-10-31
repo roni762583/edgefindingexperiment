@@ -295,7 +295,7 @@ market_edge_finder_experiment/
 
 1. **CSV First**: Download complete 3-year datasets as CSV files (human readable, debuggable)
 2. **Verify Completeness**: Ensure all 26,280 hours (~3 years) downloaded successfully
-3. **Convert to Parquet**: Only after verification, convert to Parquet for performance
+3. **CSV Storage**: Maintain CSV format for human readability and debugging
 
 **Verification Commands:**
 ```bash
@@ -340,16 +340,16 @@ This ensures stable training progression from teacher-forced (α_t=0) to fully a
 ## Data Handling Requirements
 
 ### Storage Optimization
-- **Primary Storage**: Parquet files with Snappy compression (~12-35MB for 3 years)
-- **Metadata Management**: SQLite for run tracking, checksums, and orchestration
-- **Partitioning**: By year/month for efficient read pruning in walk-forward validation
-- **Compression Ratio**: ~2-6x with Parquet/Snappy vs raw binary data
+- **Primary Storage**: CSV files for human readability and debugging (~50-150MB for 3 years)
+- **Metadata Management**: Simple text files for run tracking and validation
+- **Organization**: By instrument for clear data lineage and debugging
+- **Trade-off**: Larger file sizes vs. debugging convenience and transparency
 
 ### Data Quality & Alignment
 - **UTC Alignment**: All timestamps must be converted to UTC for consistency
 - **Missing Bar Handling**: Explicit interpolation or gap filling strategies
 - **API Rate Limiting**: Exponential backoff and request throttling for OANDA API
-- **Data Integrity**: MD5/SHA256 checksums stored in SQLite for each Parquet file
+- **Data Integrity**: File size and row count validation for each CSV file
 - **Atomic Writes**: Write to temp files then atomic move to prevent partial reads
 
 ### Error Handling Requirements

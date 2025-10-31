@@ -26,7 +26,7 @@
 ### 1. Data Pipeline
 - **Historical Data Collection**: OANDA v20 API integration for 24 FX pairs
 - **Real-time Data Stream**: Live M1 candle updates for feature computation
-- **Data Storage**: Efficient storage with DuckDB/Parquet for large datasets
+- **Data Storage**: CSV format for human readability and debugging
 - **Data Validation**: Comprehensive quality checks and anomaly detection
 
 ### 2. Feature Engineering Pipeline
@@ -505,7 +505,7 @@ def on_new_candle(instrument: str, ohlc: Dict):
 - **PyTorch 2.0+**: TCNAE implementation
 - **LightGBM 4.0+**: Gradient boosting
 - **NumPy/Pandas**: Data manipulation
-- **DuckDB**: High-performance analytics database
+- **CSV Storage**: Human-readable format for debugging and validation
 - **Polars**: Fast dataframes for large datasets
 
 ### Infrastructure
