@@ -21,9 +21,9 @@ This study presents a comprehensive investigation into the predictability of USD
 
 ### Experimental Conclusion
 
-**Technical Success, Market Reality**: The sophisticated ML architecture functioned perfectly, generating 32,880 real USD predictions with complete methodological rigor. However, **no statistically significant market edge was discovered**. Results strongly validate the efficient market hypothesis for hourly FX movements, demonstrating that technical sophistication alone cannot overcome fundamental market efficiency.
+**Status Update (October 31, 2025)**: A properly designed USD pip prediction experiment is currently running with direct training on actual USD pip movements (not log returns). The TCNAE autoencoder (537K parameters) is training on 9,135 samples across 24 instruments with USD pip targets ranging from $93 average to $5,714 maximum movement per hour. This corrects the fundamental design flaw in previous experiments that trained on scaled price_change rather than actual financial targets.
 
-**Scientific Value**: This study provides crucial negative evidence using modern ML techniques, serving as a methodological template for rigorous financial prediction research and honest reporting of unsuccessful edge discovery attempts.
+**Previous Results**: Earlier experiments showed the sophisticated ML architecture functioning perfectly but discovering no statistically significant market edge. Results validated the efficient market hypothesis for hourly FX movements, demonstrating that technical sophistication alone cannot overcome fundamental market efficiency.
 
 ---
 
