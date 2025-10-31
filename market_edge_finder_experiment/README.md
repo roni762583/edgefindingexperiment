@@ -1,28 +1,34 @@
-# Market Edge Finder Experiment - Production USD Pip Prediction System
+# Market Edge Finder Experiment - Complete USD Pip Prediction Results
 
-**PRODUCTION-READY trading system for USD pip prediction and direction classification using TCNAE + LightGBM across 24 currency pairs. Predicts actual USD movements per standard lot with statistical validation.**
+**COMPLETED: TCNAE + LightGBM system for USD pip prediction across 24 currency pairs. Full 3-stage experiment executed with statistical validation on 1,370 out-of-sample predictions.**
 
 ---
 
-## 🎉 MAJOR BREAKTHROUGH - PROPER USD PIP PREDICTION SYSTEM
+## 📊 EXPERIMENT COMPLETED - ACTUAL RESULTS
 
-**Complete rebuild with actual USD trading targets - NO MORE SHORTCUTS!**
+**Full experiment executed with realistic market results - no edges found.**
 
-### 🎯 **NEW ARCHITECTURE: ACTUAL USD PIP PREDICTION**
+### 📈 **FINAL PERFORMANCE METRICS (1,370 Test Samples)**
 
-**Revolutionary upgrade from scaled regression to real trading predictions:**
+**Realistic efficient market results:**
 
-#### **OLD (Broken) System:**
-- ❌ Predicted scaled price_change [0,1] (meaningless)
-- ❌ Single regression output per instrument  
-- ❌ No actual USD conversion
-- ❌ Arbitrary thresholds hiding all results
+| Metric | Result | Assessment |
+|--------|--------|------------|
+| **Direction Accuracy** | 49.7% | ❌ Random baseline (coin flip) |
+| **Pip Correlation** | 0.74% | ❌ No predictive power |
+| **Total P&L** | +$105.44 | ❌ Negligible (7¢ per prediction) |
+| **Trading Activity** | 0 trades | ❌ Models too uncertain |
+| **Best Performer** | GBP_JPY | Still no meaningful edge |
 
-#### **NEW (Production) System:**
-- ✅ **USD Pip Regression**: Actual dollar movement per 100K standard lot
-- ✅ **Direction Classification**: Binary up/down probability (0-1)
-- ✅ **Confidence Measures**: Combined prediction uncertainty
-- ✅ **Real Trading Metrics**: Simulated P&L with actual USD values
+### 🔬 **EXPERIMENT DESIGN**
+
+**Proper methodology executed:**
+
+- ✅ **3-Year Dataset**: Complete historical coverage (2022-2025)
+- ✅ **Temporal Validation**: 70/15/15 splits preventing lookahead
+- ✅ **Dual Architecture**: TCNAE(120D) → LightGBM(pip+direction)
+- ✅ **USD Conversion**: Actual dollar values per standard lot
+- ✅ **Statistical Testing**: 1,370 out-of-sample predictions
 
 ### 🏦 **USD PIP CALCULATION ENGINE**
 

@@ -1,18 +1,18 @@
-# Market Edge Finder Experiment - Development Plan
+# Market Edge Finder Experiment - Final Results
 
 ## Project Overview
 
-**PRODUCTION-READY** USD pip prediction and direction classification system using TCNAE + LightGBM across 24 currency pairs. Delivers actual tradeable predictions with statistical validation.
+**COMPLETED** USD pip prediction experiment using TCNAE + LightGBM across 24 currency pairs. Full statistical validation executed with realistic efficient market results.
 
-## 🎉 MAJOR MILESTONE: COMPLETE REBUILD SUCCESSFUL
+## 📊 EXPERIMENT COMPLETED: NO SIGNIFICANT EDGES FOUND
 
-**PROPER USD PIP PREDICTION SYSTEM IMPLEMENTED:**
-- ✅ **Complete Rebuild**: Eliminated all shortcuts and approximations
-- ✅ **Actual USD Targets**: Real dollar predictions per standard lot
-- ✅ **Dual Model Architecture**: Separate pip regression + direction classification
-- ✅ **Production Pipeline**: End-to-end system with comprehensive evaluation
+**FULL 3-STAGE EXPERIMENT EXECUTED:**
+- ✅ **Stage 1**: TCNAE autoencoder trained (537K parameters, 120D latent space)
+- ✅ **Stage 2**: 48 LightGBM models trained (24 pip + 24 direction)
+- ✅ **Stage 3**: Comprehensive evaluation on 1,370 test samples
+- ✅ **Real USD Predictions**: Actual dollar values per standard lot
 
-**Current Status**: Production system deployed and operational
+**Final Status**: Experiment complete - no statistical edges discovered
 
 **Key Achievements:**
 - 📊 **Complete 5-Indicator System**: Production-ready with USD scaling and percentile normalization
