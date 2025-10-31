@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FX Market Edge Prediction - Machine Learning Research</title>
+    <style>
+        .project-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+        .project-header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+        }
+        .project-title {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+        .project-subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+            font-weight: 300;
+        }
+        .section {
+            margin-bottom: 40px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .section h2 {
+            color: #4a5568;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+        .section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        .tech-stack {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .tech-tag {
+            background: #667eea;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 25px 0;
+        }
+        .metric-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        .metric-label {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .result-emphasis {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .result-emphasis strong {
+            color: #d68910;
+        }
+        .github-link {
+            display: inline-block;
+            background: #24292e;
+            color: white;
+            padding: 12px 25px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            margin: 20px 0;
+            transition: background 0.3s;
+        }
+        .github-link:hover {
+            background: #444d56;
+        }
+        .architecture-diagram {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .architecture-diagram img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .key-findings {
+            background: white;
+            border-left: 4px solid #e74c3c;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .key-findings ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .scientific-value {
+            background: #e8f5e8;
+            border: 1px solid #4caf50;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="project-container">
+        <div class="project-header">
+            <h1 class="project-title">FX Market Edge Prediction</h1>
+            <p class="project-subtitle">
+                Rigorous Machine Learning Research in Foreign Exchange Markets
+            </p>
+            <a href="https://github.com/roni762583/edgefindingexperiment" class="github-link" target="_blank">
+                🔗 View on GitHub
+            </a>
+        </div>
+
+        <div class="section">
+            <h2>Project Overview</h2>
+            <p>
+                This research project represents a comprehensive investigation into the predictability of USD pip movements 
+                in foreign exchange markets using state-of-the-art machine learning techniques. The study employed a hybrid 
+                architecture combining Temporal Convolutional Autoencoders (TCNAE) with LightGBM gradient boosting to analyze 
+                3 years of hourly market data across 24 major currency pairs.
+            </p>
+            
+            <div class="result-emphasis">
+                <strong>Key Finding:</strong> Despite sophisticated methodology and rigorous experimental design, 
+                no statistically significant market edge was discovered, providing valuable negative evidence 
+                that validates the efficient market hypothesis for hourly FX movements.
+            </div>
+
+            <div class="tech-stack">
+                <span class="tech-tag">Python</span>
+                <span class="tech-tag">PyTorch</span>
+                <span class="tech-tag">LightGBM</span>
+                <span class="tech-tag">OANDA v20 API</span>
+                <span class="tech-tag">Docker</span>
+                <span class="tech-tag">Pandas/NumPy</span>
+                <span class="tech-tag">Temporal CNNs</span>
+                <span class="tech-tag">Financial ML</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Technical Architecture</h2>
+            
+            <div class="architecture-diagram">
+                <img src="https://raw.githubusercontent.com/roni762583/edgefindingexperiment/main/market_edge_finder_experiment/results/visualizations/architecture_diagram.png" 
+                     alt="System Architecture Diagram" />
+                <p><em>Complete 3-stage ML pipeline: TCNAE autoencoder → LightGBM models → USD predictions</em></p>
+            </div>
+
+            <h3>Core Components</h3>
+            <ul>
+                <li><strong>TCNAE (Temporal Convolutional Autoencoder):</strong> 537K-parameter model compressing 4-hour sequences into 120-dimensional latent representations</li>
+                <li><strong>LightGBM Models:</strong> 48 specialized gradient boosting models (2 per instrument) for pip magnitude and direction prediction</li>
+                <li><strong>Cross-Instrument Context:</strong> 24×5 feature tensor enabling information sharing across currency pairs</li>
+                <li><strong>USD Conversion Engine:</strong> Proper financial mathematics for actual trading value calculations</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Dataset & Methodology</h2>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">224,955</div>
+                    <div class="metric-label">Total Samples</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">24</div>
+                    <div class="metric-label">Currency Pairs</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">3 Years</div>
+                    <div class="metric-label">Historical Data</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">32,880</div>
+                    <div class="metric-label">Test Predictions</div>
+                </div>
+            </div>
+
+            <h3>Data Sources & Quality</h3>
+            <ul>
+                <li><strong>OANDA v20 API:</strong> Live trading environment data ensuring market realism</li>
+                <li><strong>Hourly Frequency:</strong> Optimal balance between signal and noise for technical analysis</li>
+                <li><strong>Rigorous Cleaning:</strong> 50% retention rate after aggressive quality filtering</li>
+                <li><strong>Temporal Validation:</strong> Strict chronological splits preventing lookahead bias</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Results & Performance</h2>
+            
+            <div class="architecture-diagram">
+                <img src="https://raw.githubusercontent.com/roni762583/edgefindingexperiment/main/market_edge_finder_experiment/results/visualizations/performance_overview.png" 
+                     alt="Performance Analysis Results" />
+                <p><em>Comprehensive performance analysis showing no statistically significant edges discovered</em></p>
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">0.02%</div>
+                    <div class="metric-label">Average Correlation</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">50.1%</div>
+                    <div class="metric-label">Direction Accuracy</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">$101.80</div>
+                    <div class="metric-label">Average RMSE</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">5.83%</div>
+                    <div class="metric-label">Best Correlation (USD_CAD)</div>
+                </div>
+            </div>
+
+            <div class="key-findings">
+                <h3>Key Findings</h3>
+                <ul>
+                    <li>Direction accuracy clustered around 50% (random baseline) across all instruments</li>
+                    <li>Correlation coefficients remained below 10% for all currency pairs</li>
+                    <li>Both log returns and direct USD pip training approaches converged to identical conclusions</li>
+                    <li>Model uncertainty appropriately reflected market unpredictability</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Technical Innovation</h2>
+            <h3>Novel Contributions</h3>
+            <ul>
+                <li><strong>Dual Model Architecture:</strong> Separate regression and classification models for pip magnitude and directional prediction</li>
+                <li><strong>Latent Caching System:</strong> Optimized training pipeline reducing computational overhead by 70%</li>
+                <li><strong>USD-Centric Design:</strong> Direct financial value calculation enabling economic interpretation</li>
+                <li><strong>Production-Grade Implementation:</strong> Docker containerization, comprehensive error handling, and OANDA live API integration</li>
+            </ul>
+
+            <h3>Methodological Rigor</h3>
+            <ul>
+                <li>Temporal validation preventing data leakage</li>
+                <li>Cross-instrument feature engineering with causal constraints</li>
+                <li>Statistical significance testing across multiple timeframes</li>
+                <li>Comprehensive ablation studies validating architectural choices</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Scientific Value</h2>
+            
+            <div class="scientific-value">
+                <h3>Research Contribution</h3>
+                <p>
+                    This study provides crucial <strong>negative evidence</strong> using modern ML techniques, 
+                    serving as a methodological template for rigorous financial prediction research. 
+                    The honest reporting of unsuccessful edge discovery attempts contributes valuable 
+                    knowledge to the field by demonstrating that sophisticated technical approaches 
+                    cannot overcome fundamental market efficiency.
+                </p>
+            </div>
+
+            <h3>Industry Implications</h3>
+            <ul>
+                <li><strong>Market Efficiency Validation:</strong> Strong evidence supporting efficient market hypothesis at hourly timeframes</li>
+                <li><strong>Methodological Framework:</strong> Reusable architecture for systematic market prediction research</li>
+                <li><strong>Technical Benchmarking:</strong> Establishes baseline performance expectations for FX prediction models</li>
+                <li><strong>Risk Management:</strong> Demonstrates importance of skeptical approach to technical trading strategies</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Technical Skills Demonstrated</h2>
+            <div class="tech-stack">
+                <span class="tech-tag">Deep Learning Architecture</span>
+                <span class="tech-tag">Financial Data Engineering</span>
+                <span class="tech-tag">Production ML Pipelines</span>
+                <span class="tech-tag">Statistical Validation</span>
+                <span class="tech-tag">Time Series Analysis</span>
+                <span class="tech-tag">API Integration</span>
+                <span class="tech-tag">Docker Containerization</span>
+                <span class="tech-tag">Scientific Computing</span>
+                <span class="tech-tag">Research Methodology</span>
+                <span class="tech-tag">Code Quality & Testing</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Repository Access</h2>
+            <p>
+                The complete codebase, experimental results, and documentation are available on GitHub. 
+                The repository includes trained models, comprehensive analysis reports, and visualization 
+                tools for full reproducibility of the research findings.
+            </p>
+            
+            <a href="https://github.com/roni762583/edgefindingexperiment" class="github-link" target="_blank">
+                🔗 Explore the Complete Repository
+            </a>
+            
+            <p>
+                <strong>Repository Features:</strong> Production-ready code, comprehensive documentation, 
+                experimental results, trained models, visualization suite, and Docker deployment configuration.
+            </p>
+        </div>
+    </div>
+</body>
+</html>
