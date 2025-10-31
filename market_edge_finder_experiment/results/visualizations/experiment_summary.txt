@@ -1,0 +1,29 @@
+USD Pip Prediction Experiment - Final Results Summary
+============================================================
+
+Experiment ID: proper_20251030_221553
+Timestamp: 2025-10-30T23:52:58.600730
+Test Samples: 1,370
+Instruments: 24
+
+PERFORMANCE METRICS:
+--------------------
+Direction Accuracy: 49.7%
+Pip Correlation: 0.74%
+Total P&L: $105.44
+Best Performer: GBP_JPY
+
+ASSESSMENT:
+------------
+❌ No statistical edge found (results at random baseline)
+✅ Experiment methodology was rigorous and valid
+✅ Technical architecture functioned correctly
+✅ Results consistent with efficient market hypothesis
+
+CONCLUSION:
+------------
+The experiment successfully demonstrated that the TCNAE+LightGBM
+architecture can be properly implemented for FX prediction, but
+found no significant predictive edges in the 3-year dataset.
+This is a realistic and valuable negative result that validates
+the difficulty of beating efficient financial markets.

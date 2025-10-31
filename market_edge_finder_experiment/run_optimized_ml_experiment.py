@@ -237,6 +237,20 @@ class OptimizedMLExperiment:
         logger.info(f"📊 Final metrics: Best Val Loss={best_val_loss:.4f}, "
                    f"Final Train Loss={train_metrics['total_loss']:.4f}")
         
+        # Save the trained TCNAE model
+        model_save_path = self.results_dir / f"tcnae_model_{self.experiment_id}.pth"
+        torch.save({
+            'model_state_dict': tcnae_model.state_dict(),
+            'config': tcnae_config.__dict__,
+            'training_history': {
+                'final_epoch': final_epoch,
+                'best_val_loss': best_val_loss,
+                'final_train_loss': train_metrics['total_loss']
+            },
+            'experiment_id': self.experiment_id
+        }, model_save_path)
+        logger.info(f"💾 TCNAE model saved: {model_save_path}")
+        
         # Extract and cache latent features for ALL data (train/val/test)
         logger.info("🗄️  Extracting and caching latent features...")
         

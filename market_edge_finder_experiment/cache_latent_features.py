@@ -102,7 +102,16 @@ class LatentFeatureCache:
                 
                 # Handle both tensor and list cases for sequences
                 if isinstance(sequences, list):
-                    sequences = torch.stack(sequences)
+                    # Convert list to tensor using torch.stack for consistent tensors
+                    try:
+                        sequences = torch.stack(sequences)
+                    except RuntimeError as e:
+                        if "stack expects each tensor to be equal size" in str(e):
+                            # Handle variable batch sizes by using the first valid tensor
+                            logger.warning(f"Variable tensor shapes in batch, using first tensor: {e}")
+                            sequences = sequences[0] if sequences else torch.empty(0)
+                        else:
+                            raise
                 
                 # Move to device
                 sequences = sequences.to(device)

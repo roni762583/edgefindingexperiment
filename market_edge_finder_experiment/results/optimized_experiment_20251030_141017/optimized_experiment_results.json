@@ -1,0 +1,148 @@
+{
+  "experiment_id": "20251030_141017",
+  "timestamp": "2025-10-30T14:10:17.346298",
+  "duration": "0:12:08.259486",
+  "optimization": "latent_caching_enabled",
+  "stages_completed": [
+    "tcnae_pretraining",
+    "lightgbm_training",
+    "cooperative_learning",
+    "edge_discovery"
+  ],
+  "cache_name": "experiment_20251030_141017",
+  "data_summary": {
+    "instruments": 24,
+    "samples": 9136,
+    "features_per_instrument": 5
+  },
+  "edge_discovery_results": {
+    "timestamp": "2025-10-30T14:22:25.605716",
+    "summary": {
+      "total_instruments_tested": 24,
+      "valid_instruments": 0,
+      "edge_candidates_identified": 0,
+      "validated_edges": 0,
+      "edge_discovery_rate": 0
+    },
+    "conclusion": "NO EDGE DISCOVERED: No statistically significant edges found",
+    "recommendation": "Consider alternative approaches, different timeframes, or additional features",
+    "validated_edges": [],
+    "edge_candidates": [],
+    "performance_metrics": {
+      "AUD_CHF": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "AUD_JPY": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "AUD_NZD": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "AUD_USD": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "CAD_JPY": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "CHF_JPY": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "EUR_AUD": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "EUR_CAD": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "EUR_CHF": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "EUR_GBP": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "EUR_JPY": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "EUR_NZD": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "EUR_USD": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "GBP_AUD": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "GBP_CAD": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "GBP_CHF": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "GBP_JPY": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "GBP_NZD": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "GBP_USD": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "NZD_JPY": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "NZD_USD": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "USD_CAD": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "USD_CHF": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      },
+      "USD_JPY": {
+        "status": "INSUFFICIENT_DATA",
+        "n_samples": "1370"
+      }
+    },
+    "validated_edge_performance": {},
+    "statistical_assessment": {
+      "confidence_level": 0.95,
+      "monte_carlo_scenarios_run": 0,
+      "validation_passed": false
+    },
+    "monte_carlo_results": {},
+    "configuration": {
+      "sharpe_threshold": 0.5,
+      "max_drawdown_threshold": 0.15,
+      "min_sample_size": 2000,
+      "confidence_level": 0.95
+    }
+  },
+  "optimization_benefits": {
+    "latent_cache_reuse": true,
+    "stage_2_3_4_speedup": "Significant (no TCNAE re-computation)",
+    "memory_efficiency": "Improved (pre-calculated latents)"
+  }
+}
